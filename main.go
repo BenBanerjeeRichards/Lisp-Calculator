@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -17,6 +18,7 @@ const (
 	NumberNode     = "NumberNode"
 	LiteralNode    = "LiteralNode"
 	ExpressionNode = "ExpressionNode"
+	ProgramNode    = "ProgramNode"
 )
 
 type Token struct {
@@ -28,6 +30,21 @@ type Node struct {
 	kind     string
 	data     string
 	children []Node
+}
+
+func (node Node) Label() string {
+	switch node.kind {
+	case ExpressionNode:
+		return "Expr"
+	case ProgramNode:
+		return "Prog"
+	case NumberNode:
+		return node.data
+	case LiteralNode:
+		return fmt.Sprintf("'%s'", node.data)
+	default:
+		return node.kind
+	}
 }
 
 func isDigit(c uint8) bool {
@@ -79,6 +96,32 @@ func tokenise(input string) []Token {
 	return tokens
 }
 
+func writeToFile(path string, contents string) {
+	file, _ := os.Create(path)
+	defer file.Close()
+	file.WriteString(contents)
+}
+
+func parseTreeToDot(node Node) string {
+	var dotBuilder strings.Builder
+	index := 0
+	dotBuilder.WriteString("digraph parse {\n")
+	dotBuilder.WriteString(fmt.Sprintf("\t%d[label=\"%s\"]\n", 0, node.Label()))
+	doParseTreeToDot(node, &dotBuilder, &index)
+	dotBuilder.WriteString("}\n")
+	return dotBuilder.String()
+}
+
+func doParseTreeToDot(node Node, builder *strings.Builder, i *int) {
+	rootIndex := *i
+	for _, child := range node.children {
+		(*i) += 1
+		builder.WriteString(fmt.Sprintf("\t%d -> %d\n", rootIndex, *i))
+		builder.WriteString(fmt.Sprintf("\t%d[label=\"%s\"]\n", *i, child.Label()))
+		doParseTreeToDot(child, builder, i)
+	}
+}
+
 type Parser struct {
 	tokens    []Token
 	currIndex int
@@ -127,7 +170,7 @@ func (p *Parser) ParserNumber() (Node, error) {
 	return Node{}, errors.New("not a number")
 }
 
-func (p *Parser) ParseLiteral() (Node, error) {
+func (p *Parser) parseLiteral() (Node, error) {
 	token, err := p.CurrentToken()
 	if err != nil {
 		return Node{}, err
@@ -139,12 +182,12 @@ func (p *Parser) ParseLiteral() (Node, error) {
 	return Node{}, errors.New("not a string")
 }
 
-func (p *Parser) ParseExpression() (Node, error) {
+func (p *Parser) parseExpression() (Node, error) {
 	numNode, err := p.ParserNumber()
 	if err == nil {
 		return Node{kind: ExpressionNode, children: []Node{numNode}}, nil
 	}
-	litNode, err := p.ParseLiteral()
+	litNode, err := p.parseLiteral()
 	if err == nil {
 		return Node{kind: ExpressionNode, children: []Node{litNode}}, nil
 	}
@@ -155,8 +198,7 @@ func (p *Parser) ParseExpression() (Node, error) {
 	childExpressions := []Node{}
 	token, tokError := p.NextToken()
 	for tokError == nil && token.kind != TokRBracket {
-		fmt.Println(token.kind)
-		expr, err := p.ParseExpression()
+		expr, err := p.parseExpression()
 		if err != nil {
 			return Node{}, err
 		}
@@ -166,7 +208,27 @@ func (p *Parser) ParseExpression() (Node, error) {
 	if err != nil {
 		return Node{}, nil
 	}
+	p.NextToken()
 	return Node{kind: ExpressionNode, children: childExpressions}, nil
+}
+
+func (p *Parser) parseProgram() (Node, error) {
+	expressions := []Node{}
+	for {
+		expr, err := p.parseExpression()
+		if err != nil {
+			if p.IsEndOfInput() {
+				prog := Node{kind: ProgramNode, children: expressions}
+				return prog, nil
+			} else {
+				// Unexpected end of input
+				return Node{}, err
+			}
+		}
+		t, err := p.CurrentToken()
+		fmt.Println("Parsed expression, current token = %v", t)
+		expressions = append(expressions, expr)
+	}
 }
 
 func main() {
@@ -176,11 +238,12 @@ func main() {
 
 	parser := Parser{}
 	parser.New(tokens)
-	node, err := parser.ParseExpression()
+	node, err := parser.parseProgram()
 	if err != nil {
 		fmt.Println(err.Error())
 	} else {
 		fmt.Println(node)
-		fmt.Println(err)
 	}
+
+	writeToFile("syntax.dot", parseTreeToDot(node))
 }
