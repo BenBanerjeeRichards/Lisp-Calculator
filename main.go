@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -225,24 +226,81 @@ func (p *Parser) parseProgram() (Node, error) {
 				return Node{}, err
 			}
 		}
-		t, err := p.CurrentToken()
-		fmt.Println("Parsed expression, current token = %v", t)
 		expressions = append(expressions, expr)
 	}
 }
 
+func evalLiteral(node Node) (string, error) {
+	switch node.kind {
+	case LiteralNode:
+		return node.data, nil
+	case ExpressionNode:
+		if len(node.children) != 1 {
+			return "", errors.New("can not obtain literal from n-ary expression")
+		}
+		return evalLiteral(node.children[0]);
+	default:
+		return "", fmt.Errorf("can not obtain literal from not type %s", node.kind)
+	}
+}
+
+func Eval(node Node) (float64, error) {
+	switch node.kind {
+	case NumberNode:
+		f, err := strconv.ParseFloat(node.data, 64)
+		if err != nil {
+			return 0, errors.New("failed to parse as float")
+		}
+		return f, nil
+	case LiteralNode:
+		// TODO implement definitions
+		return 0, errors.New("variables not yet implemented")
+	case ExpressionNode:
+		if len(node.children) == 1 {
+			return Eval(node.children[0])
+		}
+		literal, err := evalLiteral(node.children[0])
+		if err != nil {
+			return 0, errors.New("first argument to expression operation should be a literal")
+		}
+		switch literal {
+		case "add":
+			if len(node.children) != 3 {
+				return 0, errors.New("expected two operands to binary operation add")
+			}
+			lhs, err := Eval(node.children[1])
+			if err != nil {
+				return 0, err
+			}
+			rhs, err := Eval(node.children[2])
+			if err != nil {
+				return 0, err
+			}
+			return lhs + rhs, nil
+		}
+	default:
+		return 0, errors.New("unknown node")
+	}
+	return 0, nil
+}
+
 func main() {
-	// tokens := tokenise("hello 34")
-	tokens := tokenise("(define r (add 5 23))(print (plus 10 r))")
-	fmt.Printf("Tokens:%v\n", tokens)
+	tokens := tokenise("(add (add 14 10) 2)")
+	// tokens := tokenise("(define r (add 55 23))(print (plus 10 r))")
 
 	parser := Parser{}
 	parser.New(tokens)
-	node, err := parser.parseProgram()
+	node, err := parser.parseExpression()
 	if err != nil {
 		fmt.Println(err.Error())
 	} else {
 		fmt.Println(node)
+	}
+	val, err := Eval(node)
+	if err != nil {
+		fmt.Println("Eval error occured", err.Error())
+	} else {
+		fmt.Println(val)
 	}
 
 	writeToFile("syntax.dot", parseTreeToDot(node))
