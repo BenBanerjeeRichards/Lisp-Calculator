@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -238,7 +239,7 @@ func evalLiteral(node Node) (string, error) {
 		if len(node.children) != 1 {
 			return "", errors.New("can not obtain literal from n-ary expression")
 		}
-		return evalLiteral(node.children[0]);
+		return evalLiteral(node.children[0])
 	default:
 		return "", fmt.Errorf("can not obtain literal from not type %s", node.kind)
 	}
@@ -256,6 +257,9 @@ func Eval(node Node) (float64, error) {
 		// TODO implement definitions
 		return 0, errors.New("variables not yet implemented")
 	case ExpressionNode:
+		if len(node.children) == 0 {
+			return 0, errors.New("invalid expression - must have non-zero child expressions")
+		}
 		if len(node.children) == 1 {
 			return Eval(node.children[0])
 		}
@@ -284,7 +288,34 @@ func Eval(node Node) (float64, error) {
 	return 0, nil
 }
 
+func RunRepl() {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Print("calc> ")
+		text, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading from stdin: ", err)
+			break
+		}
+		tokens := tokenise(text)
+		parser := Parser{}
+		parser.New(tokens)
+		expr, err := parser.parseExpression()
+		if err != nil {
+			fmt.Println("Parse Error: ", err.Error())
+			continue
+		}
+		val, err := Eval(expr)
+		if err != nil {
+			fmt.Println("Eval Error: ", err.Error())
+			continue
+		}
+		fmt.Println(val)
+	}
+}
+
 func main() {
+	RunRepl()
 	tokens := tokenise("(add (add 14 10) 2)")
 	// tokens := tokenise("(define r (add 55 23))(print (plus 10 r))")
 
