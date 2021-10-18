@@ -3,7 +3,6 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -32,7 +31,7 @@ type Node struct {
 	Children []Node
 }
 
-func (node Node) label() string {
+func (node Node) Label() string {
 	switch node.Kind {
 	case ExpressionNode:
 		return "Expr"
@@ -45,6 +44,10 @@ func (node Node) label() string {
 	default:
 		return node.Kind
 	}
+}
+
+func (node Node) ChildNodes() []Node {
+	return node.Children
 }
 
 func isDigit(c uint8) bool {
@@ -94,32 +97,6 @@ func Tokenise(input string) []Token {
 		tokens = append(tokens, token)
 	}
 	return tokens
-}
-
-func writeToFile(path string, contents string) {
-	file, _ := os.Create(path)
-	defer file.Close()
-	file.WriteString(contents)
-}
-
-func parseTreeToDot(node Node) string {
-	var dotBuilder strings.Builder
-	index := 0
-	dotBuilder.WriteString("digraph parse {\n")
-	dotBuilder.WriteString(fmt.Sprintf("\t%d[label=\"%s\"]\n", 0, node.label()))
-	doParseTreeToDot(node, &dotBuilder, &index)
-	dotBuilder.WriteString("}\n")
-	return dotBuilder.String()
-}
-
-func doParseTreeToDot(node Node, builder *strings.Builder, i *int) {
-	rootIndex := *i
-	for _, child := range node.Children {
-		(*i) += 1
-		builder.WriteString(fmt.Sprintf("\t%d -> %d\n", rootIndex, *i))
-		builder.WriteString(fmt.Sprintf("\t%d[label=\"%s\"]\n", *i, child.label()))
-		doParseTreeToDot(child, builder, i)
-	}
 }
 
 type Parser struct {

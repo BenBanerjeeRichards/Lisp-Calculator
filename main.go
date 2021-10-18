@@ -7,7 +7,9 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/util"
 )
 
 func evalLiteral(node parser.Node) (string, error) {
@@ -94,7 +96,7 @@ func RunRepl() {
 }
 
 func main() {
-	RunRepl()
+	// RunRepl()
 	tokens := parser.Tokenise("(add (add 14 10) 2)")
 	// tokens := tokenise("(define r (add 55 23))(print (plus 10 r))")
 
@@ -106,6 +108,16 @@ func main() {
 	} else {
 		fmt.Println(node)
 	}
+
+	util.WriteToFile("syntax.dot", util.ParseTreeToDot(node))
+
+	ast, err := ast.CreateAst(node)
+	if err != nil {
+		fmt.Println("Ast error: ", err)
+	} else {
+		fmt.Println(ast)
+	}
+
 	val, err := Eval(node)
 	if err != nil {
 		fmt.Println("Eval error occured", err.Error())
