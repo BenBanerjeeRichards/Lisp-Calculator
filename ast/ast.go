@@ -74,10 +74,10 @@ func CreateAst(expr parser.Node) (Ast, error) {
 }
 
 func doCreateAst(node parser.Node) (Ast, error) {
-	if node.Children[0].Data == "def" && node.Kind == parser.ExpressionNode {
+	if len(node.Children) > 0 && node.Children[0].Kind == parser.ExpressionNode && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind == parser.LiteralNode && node.Children[0].Children[0].Data == "def" {
 		varDefStmt, err := createAstStatement(node)
 		if err != nil {
-			return Ast{}, nil
+			return Ast{}, err
 		}
 		ast := Ast{}
 		ast.newStatement(varDefStmt)
@@ -141,18 +141,18 @@ func createAstExpression(node parser.Node) (Expr, error) {
 }
 
 func createAstStatement(node parser.Node) (Stmt, error) {
-	if node.Children[0].Data == "def" {
+	if len(node.Children) > 0 && node.Children[0].Kind == parser.ExpressionNode && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind == parser.LiteralNode && node.Children[0].Children[0].Data == "def" {
 		if len(node.Children) != 3 {
 			return nil, errors.New("invalid variable declaration syntax")
 		}
-		if node.Children[1].Kind != parser.LiteralNode {
+		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
 			return nil, errors.New("invalid variable name")
 		}
 		varValue, err := createAstExpression(node.Children[2])
 		if err != nil {
 			return nil, fmt.Errorf("variable value must be an expression - %w", err)
 		}
-		return VarDefStmt{Identifier: node.Children[1].Data, Value: varValue}, nil
+		return VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue}, nil
 	}
 	return nil, errors.New("could not create statement")
 }

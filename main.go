@@ -69,8 +69,108 @@ func Eval(node parser.Node) (float64, error) {
 	return 0, nil
 }
 
+type Env struct {
+	Variables map[string]float64
+}
+
+func (env *Env) New() {
+	env.Variables = make(map[string]float64)
+}
+
+type EvalResult struct {
+	HasValue bool
+	Value    float64
+}
+
+func EvalAst(astNode ast.Ast, env *Env) (EvalResult, error) {
+	if astNode.Kind == ast.StmtType {
+		err := EvalAstStmt(astNode.Statement, env)
+		if err != nil {
+			return EvalResult{}, err
+		}
+		return EvalResult{HasValue: false}, nil
+	}
+	if astNode.Kind == ast.ExprType {
+		val, err := EvalAstExpr(astNode.Expression, *env)
+		if err != nil {
+			return EvalResult{}, err
+		}
+		return EvalResult{HasValue: true, Value: val}, nil
+	}
+	return EvalResult{}, errors.New("?")
+}
+
+func EvalAstStmt(node ast.Stmt, env *Env) error {
+	switch stmtNode := node.(type) {
+	case ast.VarDefStmt:
+		result, err := EvalAstExpr(stmtNode.Value, *env)
+		if err != nil {
+			return err
+		}
+		env.Variables[stmtNode.Identifier] = result
+	default:
+		return fmt.Errorf("unknown statement type ", node)
+	}
+	return nil
+}
+
+func BuiltInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (float64, error) {
+	lhsValue, err := EvalAstExpr(lhs, env)
+	if err != nil {
+		return 0, err
+	}
+	rhsValue, err := EvalAstExpr(rhs, env)
+	if err != nil {
+		return 0, err
+	}
+	return f(lhsValue, rhsValue), nil
+}
+
+func EvalAstExpr(node ast.Expr, env Env) (float64, error) {
+	switch exprNode := node.(type) {
+	case ast.NumberExpr:
+		return exprNode.Value, nil
+	case ast.VarUseExpr:
+		if val, ok := env.Variables[exprNode.Identifier]; ok {
+			return val, nil
+		} else {
+			return 0, fmt.Errorf("undeclared variable", exprNode.Identifier)
+		}
+	case ast.FuncAppExpr:
+		switch exprNode.Identifier {
+		case "add":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return BuiltInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "sub":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return BuiltInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "mul":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return BuiltInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "div":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return BuiltInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		default:
+			return 0, fmt.Errorf("unknown function", exprNode.Identifier)
+		}
+	default:
+		return 0, fmt.Errorf("unknown expression", node)
+	}
+}
+
 func RunRepl() {
 	reader := bufio.NewReader(os.Stdin)
+	env := Env{}
+	env.New()
+
 	for {
 		fmt.Print("calc> ")
 		text, err := reader.ReadString('\n')
@@ -86,17 +186,26 @@ func RunRepl() {
 			fmt.Println("Parse Error: ", err.Error())
 			continue
 		}
-		val, err := Eval(expr)
+		ast, err := ast.CreateAst(expr)
+		if err != nil {
+			fmt.Println("Ast Error: ", err)
+			continue
+		}
+		fmt.Println(ast)
+
+		val, err := EvalAst(ast, &env)
 		if err != nil {
 			fmt.Println("Eval Error: ", err.Error())
 			continue
 		}
-		fmt.Println(val)
+		if val.HasValue {
+			fmt.Println(val.Value)
+		}
 	}
 }
 
 func main() {
-	// RunRepl()
+	RunRepl()
 	tokens := parser.Tokenise("(add (add 14 10) 2)")
 	// tokens := tokenise("(define r (add 55 23))(print (plus 10 r))")
 
