@@ -66,6 +66,21 @@ func (ast *Ast) newExpression(expr Expr) {
 	ast.Expression = expr
 }
 
+func CreateProgramAst(expr parser.Node) ([]Ast, error) {
+	if expr.Kind != parser.ProgramNode {
+		return []Ast{}, errors.New("creating program ast requires program node")
+	}
+	asts := make([]Ast, 0)
+	for _, expression := range expr.Children {
+		ast, err := CreateAst(expression)
+		if err != nil {
+			return []Ast{}, err
+		}
+		asts = append(asts, ast)
+	}
+	return asts, nil
+}
+
 func CreateAst(expr parser.Node) (Ast, error) {
 	if expr.Kind != parser.ExpressionNode {
 		return Ast{}, errors.New("expected ExpressionNode when creating AST")

@@ -23,6 +23,26 @@ type EvalResult struct {
 	Value    float64
 }
 
+// Eval every ast and return the value of the final one
+func EvalProgram(asts []ast.Ast) (EvalResult, error) {
+	if len(asts) == 0 {
+		return EvalResult{}, errors.New("eval program requires non-zero numbers of asts")
+	}
+	env := Env{}
+	env.New()
+
+	for i, ast := range asts {
+		result, err := Eval(ast, &env)
+		if err != nil {
+			return EvalResult{}, err
+		}
+		if i == len(asts) - 1 {
+			return result, nil
+		}
+	}
+	return EvalResult{}, errors.New("unknown error?")
+}
+
 func Eval(astNode ast.Ast, env *Env) (EvalResult, error) {
 	if astNode.Kind == ast.StmtType {
 		err := evalStmt(astNode.Statement, env)
