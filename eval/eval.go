@@ -108,17 +108,20 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 			if len(funcDef.Args) != len(exprNode.Args) {
 				return 0, fmt.Errorf("bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))
 			}
+			funcAppEnv := Env{}
+			funcAppEnv.New()
+			funcAppEnv.Functions = env.Functions
 			for i, argName := range funcDef.Args {
 				argExpr := exprNode.Args[i]
 				argEvalValue, err := evalExpr(argExpr, env)
 				if err != nil {
 					return 0, fmt.Errorf("failed to eval argument %d - %v", i+1, err)
 				}
-				// TODO replace this with proper scoping
-				env.Variables[argName] = argEvalValue
+
+				funcAppEnv.Variables[argName] = argEvalValue
 			}
 			for i, funcDefAst := range funcDef.Body {
-				evalResult, err := Eval(funcDefAst, &env)
+				evalResult, err := Eval(funcDefAst, &funcAppEnv)
 				if err != nil {
 					return 0, err
 				}
