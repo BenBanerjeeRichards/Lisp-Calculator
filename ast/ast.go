@@ -35,6 +35,12 @@ type VarDefStmt struct {
 	Value      Expr
 }
 
+type FuncDefStmt struct {
+	Identifier string
+	Args       []string
+	Body       []Ast
+}
+
 type VarUseExpr struct {
 	Identifier string
 }
@@ -54,7 +60,8 @@ func (FuncAppExpr) exprType() {}
 func (NumberExpr) exprType()  {}
 func (VarUseExpr) exprType()  {}
 
-func (VarDefStmt) stmtType() {}
+func (VarDefStmt) stmtType()  {}
+func (FuncDefStmt) stmtType() {}
 
 func (ast *Ast) newStatement(stmt Stmt) {
 	ast.Kind = StmtType
@@ -66,47 +73,30 @@ func (ast *Ast) newExpression(expr Expr) {
 	ast.Expression = expr
 }
 
-func CreateProgramAst(expr parser.Node) ([]Ast, error) {
-	if expr.Kind != parser.ProgramNode {
-		return []Ast{}, errors.New("creating program ast requires program node")
-	}
+type AstConstructor struct {
+	FunctionNames map[string]bool
+}
+
+func (constructor *AstConstructor) New() {
+	constructor.FunctionNames = make(map[string]bool)
+	constructor.FunctionNames["add"] = true
+	constructor.FunctionNames["mul"] = true
+	constructor.FunctionNames["div"] = true
+	constructor.FunctionNames["sub"] = true
+}
+
+func (constructor *AstConstructor) CreateAst(expr parser.Node) ([]Ast, error) {
 	asts := make([]Ast, 0)
+	// Keep track of declared functions. This is needed to differentiate between function application
+	// and variable usage
 	for _, expression := range expr.Children {
-		ast, err := CreateAst(expression)
+		ast, err := constructor.CreateExpressionAst(expression)
 		if err != nil {
 			return []Ast{}, err
 		}
 		asts = append(asts, ast)
 	}
 	return asts, nil
-}
-
-func CreateAst(expr parser.Node) (Ast, error) {
-	if expr.Kind != parser.ExpressionNode {
-		return Ast{}, errors.New("expected ExpressionNode when creating AST")
-	}
-	return doCreateAst(expr)
-}
-
-func doCreateAst(node parser.Node) (Ast, error) {
-	if len(node.Children) > 0 && node.Children[0].Kind == parser.ExpressionNode && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind == parser.LiteralNode && node.Children[0].Children[0].Data == "def" {
-		varDefStmt, err := createAstStatement(node)
-		if err != nil {
-			return Ast{}, err
-		}
-		ast := Ast{}
-		ast.newStatement(varDefStmt)
-		return ast, nil
-	}
-
-	// Everything else must be an expression
-	expr, err := createAstExpression(node)
-	if err != nil {
-		return Ast{}, err
-	}
-	ast := Ast{}
-	ast.newExpression(expr)
-	return ast, nil
 }
 
 func singleNestedExpr(node parser.Node) (parser.Node, error) {
@@ -119,7 +109,50 @@ func singleNestedExpr(node parser.Node) (parser.Node, error) {
 	return node.Children[0], nil
 }
 
-func createAstExpression(node parser.Node) (Expr, error) {
+// Helper for traversing the common Expr -> Expr -> LiteralNode
+func nestedLiteralValue(node parser.Node) (bool, string) {
+	if node.Kind != parser.ExpressionNode || len(node.Children) == 0 {
+		return false, ""
+	}
+	if len(node.Children) > 0 && node.Children[0].Kind == parser.ExpressionNode && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind == parser.LiteralNode {
+		return true, node.Children[0].Children[0].Data
+	}
+
+	return false, ""
+}
+
+func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
+	for _, idx := range childIndexes {
+		if idx >= len(node.Children) {
+			return parser.Node{}, false
+		}
+		node = node.Children[idx]
+	}
+	return node, true
+}
+
+func (constructor *AstConstructor) CreateExpressionAst(node parser.Node) (Ast, error) {
+	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun") {
+		varDefStmt, err := constructor.createAstStatement(node)
+		if err != nil {
+			return Ast{}, err
+		}
+		ast := Ast{}
+		ast.newStatement(varDefStmt)
+		return ast, nil
+	}
+
+	// Everything else must be an expression
+	expr, err := constructor.createAstExpression(node)
+	if err != nil {
+		return Ast{}, err
+	}
+	ast := Ast{}
+	ast.newExpression(expr)
+	return ast, nil
+}
+
+func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, error) {
 	switch node.Kind {
 	case parser.NumberNode:
 		f, err := strconv.ParseFloat(node.Data, 64)
@@ -133,21 +166,14 @@ func createAstExpression(node parser.Node) (Expr, error) {
 		if len(node.Children) == 0 {
 			return nil, errors.New("expression must have non-zero children")
 		}
-		if len(node.Children) == 1 {
-			return createAstExpression(node.Children[0])
-		}
-		// Function application
-		funcNameExpr, err := singleNestedExpr(node.Children[0])
-		if err == nil && funcNameExpr.Kind == parser.LiteralNode {
-			appExpr := FuncAppExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1)}
-			for i, argNode := range node.Children[1:] {
-				argExpr, err := createAstExpression(argNode)
-				if err != nil {
-					return nil, errors.New("function application argument must be an expression")
-				}
-				appExpr.Args[i] = argExpr
+		// Determine if we have a function or variable declaration
+		if litNode, ok := safeTraverse(node, []int{0, 0}); ok {
+			if _, isFunc := constructor.FunctionNames[litNode.Data]; isFunc {
+				return constructor.createFuncAppExpr(node)
 			}
-			return appExpr, nil
+		}
+		if len(node.Children) == 1 {
+			return constructor.createAstExpression(node.Children[0])
 		} else {
 			return nil, fmt.Errorf("unknown expression type with node kind %s", node.Children[0].Kind)
 		}
@@ -155,19 +181,71 @@ func createAstExpression(node parser.Node) (Expr, error) {
 	return nil, fmt.Errorf("unknown node type %s", node.Kind)
 }
 
-func createAstStatement(node parser.Node) (Stmt, error) {
-	if len(node.Children) > 0 && node.Children[0].Kind == parser.ExpressionNode && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind == parser.LiteralNode && node.Children[0].Children[0].Data == "def" {
+func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, error) {
+	funcNameExpr, err := singleNestedExpr(node.Children[0])
+	if err == nil && funcNameExpr.Kind == parser.LiteralNode {
+		appExpr := FuncAppExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1)}
+		for i, argNode := range node.Children[1:] {
+			argExpr, err := constructor.createAstExpression(argNode)
+			if err != nil {
+				return nil, errors.New("function application argument must be an expression")
+			}
+			appExpr.Args[i] = argExpr
+		}
+		return appExpr, nil
+	}
+	return nil, errors.New("invalid function application")
+}
+
+func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, error) {
+	ok, literal := nestedLiteralValue(node)
+	if !ok {
+		return nil, errors.New("could not create statement")
+	}
+	if literal == "def" {
 		if len(node.Children) != 3 {
 			return nil, errors.New("invalid variable declaration syntax")
 		}
 		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
 			return nil, errors.New("invalid variable name")
 		}
-		varValue, err := createAstExpression(node.Children[2])
+		varValue, err := constructor.createAstExpression(node.Children[2])
 		if err != nil {
 			return nil, fmt.Errorf("variable value must be an expression - %w", err)
 		}
 		return VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue}, nil
+	} else if literal == "defun" {
+		// (defun identifier (args) definition)
+		if len(node.Children) < 4 {
+			return nil, errors.New("invalid function declaration syntax")
+		}
+		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
+			return nil, errors.New("invalid function name name")
+		}
+
+		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0)}
+		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok {
+			return nil, fmt.Errorf("duplicate declaration of function %s", funcDefExpr.Identifier)
+		}
+		constructor.FunctionNames[funcDefExpr.Identifier] = true
+
+		argNode := node.Children[2]
+		for _, argExpr := range argNode.Children {
+			if len(argExpr.Children) != 1 || argExpr.Children[0].Kind != parser.LiteralNode {
+				return nil, errors.New("bad argument for function definition")
+			}
+			funcDefExpr.Args = append(funcDefExpr.Args, argExpr.Children[0].Data)
+		}
+
+		for _, expr := range node.Children[3:] {
+			exprAst, err := constructor.CreateExpressionAst(expr)
+			if err != nil {
+				return nil, err
+			}
+			funcDefExpr.Body = append(funcDefExpr.Body, exprAst)
+		}
+
+		return funcDefExpr, nil
 	}
 	return nil, errors.New("could not create statement")
 }

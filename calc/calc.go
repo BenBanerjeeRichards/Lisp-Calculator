@@ -17,7 +17,9 @@ func Ast(code string) ([]ast.Ast, error) {
 	if err != nil {
 		return []ast.Ast{}, fmt.Errorf("parser Error - %v", err)
 	}
-	astTree, err := ast.CreateProgramAst(syntaxTree)
+	astConstruct := ast.AstConstructor{}
+	astConstruct.New()
+	astTree, err := astConstruct.CreateAst(syntaxTree)
 	if err != nil {
 		return []ast.Ast{}, fmt.Errorf("parse Ast Error - %v", err)
 	}

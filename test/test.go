@@ -15,7 +15,7 @@ func printTestFailed(code string, expected float64, actual float64) {
 	fmt.Printf("Failed: %s\nReason: Expected %f but got %f \n", code, expected, actual)
 }
 
-func expectNumber(code string, expected float64) bool {
+func ExpectNumber(code string, expected float64) bool {
 	asts, err := calc.Ast(code)
 	if err != nil {
 		printTestFailedErr(code, err)
@@ -38,16 +38,34 @@ func expectNumber(code string, expected float64) bool {
 }
 
 func Run() {
-	expectNumber("(5)", 5)
-	expectNumber("(add 5 10)", 15)
-	expectNumber("(add 5 (add 3 6))", 14)
-	expectNumber("(add (add 10 20) (add 3 6))", 39)
-	expectNumber("(add (add 10 20) 100)", 130)
-	expectNumber("(def x 10)(x)", 10)
-	expectNumber("(def x 10)(add x 5)", 15)
-	expectNumber("(def x 10)(def y 20)(add x y)", 30)
-	expectNumber("(def x 10)(def x 20)(x)", 20)
-	expectNumber("(div 100 2)", 50)
-	expectNumber("(mul 100 2)", 200)
-	expectNumber("(sub 100 2)", 98)
+	ExpectNumber("(5)", 5)
+	ExpectNumber("(add 5 10)", 15)
+	ExpectNumber("(add 5 (add 3 6))", 14)
+	ExpectNumber("(add (add 10 20) (add 3 6))", 39)
+	ExpectNumber("(add (add 10 20) 100)", 130)
+	ExpectNumber("(def x 10)(x)", 10)
+	ExpectNumber("(def x 10)(add x 5)", 15)
+	ExpectNumber("(def x 10)(def y 20)(add x y)", 30)
+	ExpectNumber(
+		`(def x 10)
+		 (def x 20)
+		 (x)`, 20)
+	ExpectNumber("(div 100 2)", 50)
+	ExpectNumber("(mul 100 2)", 200)
+	ExpectNumber("(sub 100 2)", 98)
+	ExpectNumber("(defun f (a b c) (mul a (add b c)))(f 2 7 2)", 18)
+	ExpectNumber("(def x 10)(defun f (x) x)(f 20)", 20)
+	ExpectNumber(
+		`(defun f (x) 
+			(def y 10)
+			(add x y))
+		(f 100)`, 110)
+	ExpectNumber("(defun f () (10))(f)", 10)
+	ExpectNumber("(defun f (x) (add x 1)) (f 2)", 3)
+	ExpectNumber(
+		`(def x 500)
+		 (defun f (x) (add x 1)) 
+		 (f 10)
+		 (x)
+		`, 500)
 }
