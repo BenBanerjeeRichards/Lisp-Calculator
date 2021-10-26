@@ -4,10 +4,21 @@ import (
 	"fmt"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
+	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
 )
 
-// High leval functions for getting from soure -> AST
+func ParseAndEval(code string) (eval.EvalResult, error) {
+	ast, err := Ast(code)
+	if err != nil {
+		return eval.EvalResult{}, err
+	}
+	evalResult, err := eval.EvalProgram(ast)
+	if err != nil {
+		return eval.EvalResult{}, err
+	}
+	return evalResult, nil
+}
 
 func Ast(code string) ([]ast.Ast, error) {
 	tokens := parser.Tokenise(code)

@@ -8,6 +8,14 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
 )
 
+func ReadFile(path string) (string, error) {
+	f, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(f), nil
+}
+
 func WriteToFile(path string, contents string) {
 	file, _ := os.Create(path)
 	defer file.Close()

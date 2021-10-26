@@ -207,7 +207,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 	}
 	if literal == "def" {
 		if len(node.Children) != 3 {
-			return nil, errors.New("invalid variable declaration syntax")
+			return nil, fmt.Errorf("invalid variable declaration syntax - expected 3 expression children, got %d", len(node.Children))
 		}
 		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
 			return nil, errors.New("invalid variable name")
