@@ -51,7 +51,7 @@ func (node Node) ChildNodes() []Node {
 }
 
 func isDigit(c uint8) bool {
-	return c >= 48 && c <= 57
+	return (c >= 48 && c <= 57) || c == '.'
 }
 
 func isLower(c uint8) bool {
@@ -77,8 +77,17 @@ func nextToken(input string) (Token, string) {
 	if input[0] == ')' {
 		return Token{Kind: TokRBracket}, input[1:]
 	}
-	if isDigit(input[0]) {
+	// TODO should improve this, probably just use regexp
+	if isDigit(input[0]) || input[0] == '-' {
+		isNeg := false
+		if input[0] == '-' {
+			isNeg = true
+			input = input[1:]
+		}
 		number, remaining := takeWhile(input, isDigit)
+		if isNeg {
+			number = "-" + number
+		}
 		return Token{Kind: TokNumber, Data: number}, remaining
 	}
 	if isLower(input[0]) {

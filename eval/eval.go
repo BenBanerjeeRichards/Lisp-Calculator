@@ -159,7 +159,7 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 			return 0, fmt.Errorf("unknown function %s", exprNode.Identifier)
 		}
 	default:
-		return 0, fmt.Errorf("unknown expression", node)
+		return 0, fmt.Errorf("unknown expression %v", node)
 	}
 }
 

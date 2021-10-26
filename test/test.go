@@ -39,7 +39,12 @@ func ExpectNumber(code string, expected float64) bool {
 
 func Run() {
 	ExpectNumber("(5)", 5)
+	ExpectNumber("(5.5)", 5.5)
+	ExpectNumber("(-5.5)", -5.5)
+	ExpectNumber("(sub 3.3 -2.2)", 5.5)
+	ExpectNumber("(-5)", -5)
 	ExpectNumber("(add 5 10)", 15)
+	ExpectNumber("(add 5 -10)", -5)
 	ExpectNumber("(add 5 (add 3 6))", 14)
 	ExpectNumber("(add (add 10 20) (add 3 6))", 39)
 	ExpectNumber("(add (add 10 20) 100)", 130)
