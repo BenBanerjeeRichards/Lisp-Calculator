@@ -49,6 +49,8 @@ func Run() {
 	ExpectNumber("(add (add 10 20) (add 3 6))", 39)
 	ExpectNumber("(add (add 10 20) 100)", 130)
 	ExpectNumber("(def x 10)(x)", 10)
+	ExpectNumber("(def x1 10)(x1)", 10)
+	ExpectNumber("(def var10able 10)(var10able)", 10)
 	ExpectNumber("(def x 10)(add x 5)", 15)
 	ExpectNumber("(def x 10)(def y 20)(add x y)", 30)
 	ExpectNumber(

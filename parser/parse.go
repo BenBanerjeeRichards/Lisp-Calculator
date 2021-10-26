@@ -58,6 +58,10 @@ func isLower(c uint8) bool {
 	return c >= 61 && c <= 122
 }
 
+func isAlphaNumeric(c uint8) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
 func takeWhile(input string, f func(uint8) bool) (string, string) {
 	i := 0
 	for i < len(input) && f(input[i]) {
@@ -90,8 +94,8 @@ func nextToken(input string) (Token, string) {
 		}
 		return Token{Kind: TokNumber, Data: number}, remaining
 	}
-	if isLower(input[0]) {
-		number, remaining := takeWhile(input, isLower)
+	if isAlphaNumeric(input[0]) {
+		number, remaining := takeWhile(input, isAlphaNumeric)
 		return Token{Kind: TokString, Data: number}, remaining
 	}
 
