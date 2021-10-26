@@ -58,6 +58,9 @@ func Run() {
 	ExpectNumber("(div 100 2)", 50)
 	ExpectNumber("(mul 100 2)", 200)
 	ExpectNumber("(sub 100 2)", 98)
+	ExpectNumber("(pow 2 10)", 1024)
+	ExpectNumber("(log 2 1024)", 10)
+	ExpectNumber("(sqrt 9)", 3)
 	ExpectNumber("(defun f (a b c) (mul a (add b c)))(f 2 7 2)", 18)
 	ExpectNumber("(def x 10)(defun f (x) x)(f 20)", 20)
 	ExpectNumber(

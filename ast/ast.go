@@ -83,6 +83,9 @@ func (constructor *AstConstructor) New() {
 	constructor.FunctionNames["mul"] = true
 	constructor.FunctionNames["div"] = true
 	constructor.FunctionNames["sub"] = true
+	constructor.FunctionNames["log"] = true
+	constructor.FunctionNames["pow"] = true
+	constructor.FunctionNames["sqrt"] = true
 }
 
 func (constructor *AstConstructor) CreateAst(expr parser.Node) ([]Ast, error) {

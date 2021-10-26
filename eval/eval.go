@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
@@ -155,6 +156,25 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "pow":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, exprNode.Args[0], exprNode.Args[1], env)
+		case "log":
+			if len(exprNode.Args) != 2 {
+				return 0, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, exprNode.Args[0], exprNode.Args[1], env)
+		case "sqrt":
+			if len(exprNode.Args) != 1 {
+				return 0, errors.New("unary funtion add requires two parameters")
+			}
+			sqrtOf, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return 0, err
+			}
+			return math.Sqrt(sqrtOf), nil
 		default:
 			return 0, fmt.Errorf("unknown function %s", exprNode.Identifier)
 		}
