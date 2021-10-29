@@ -78,4 +78,12 @@ func Run() {
 		 (f 10)
 		 (x)
 		`, 500)
+	ExpectNumber(`
+	(defun quadraticFirst (a b c)
+		(def disc (sub (pow b 2) (mul (mul 4 a) c)))
+		(def first (div 
+			(add (mul -1 b) (sqrt disc)) 
+			(mul 2 a)))     
+		(first))
+	(quadraticFirst 2 5 3)`, -1)
 }

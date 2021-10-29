@@ -3,7 +3,6 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 const (
@@ -20,9 +19,25 @@ const (
 	ProgramNode    = "ProgramNode"
 )
 
+// Taken from standard library (strings)
+var asciiSpace = [256]uint8{'\t': 1, '\n': 1, '\v': 1, '\f': 1, '\r': 1, ' ': 1}
+
+type FilePos struct {
+	Line     int
+	Col      int
+	Position int
+}
+
+// Range in a file from Start (inclusive) to End (Exclusive)
+type FileRange struct {
+	Start FilePos
+	End   FilePos
+}
+
 type Token struct {
-	Kind string
-	Data string
+	Kind  string
+	Data  string
+	Range FileRange
 }
 
 type Node struct {
@@ -54,10 +69,6 @@ func isDigit(c uint8) bool {
 	return (c >= 48 && c <= 57) || c == '.'
 }
 
-func isLower(c uint8) bool {
-	return c >= 61 && c <= 122
-}
-
 func isAlphaNumeric(c uint8) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
@@ -70,46 +81,109 @@ func takeWhile(input string, f func(uint8) bool) (string, string) {
 	return input[0:i], input[i:]
 }
 
-func nextToken(input string) (Token, string) {
-	input = strings.TrimSpace(input)
-	if len(input) == 0 {
-		return Token{}, ""
+type Tokeniser struct {
+	input string
+	index int
+	line  int
+	col   int
+}
+
+func (t *Tokeniser) New(input string) {
+	t.index = 0
+	// Line and col are 1-indexed as they are for display purpose only
+	t.line = 1
+	t.col = 1
+	t.input = input
+}
+
+func (t Tokeniser) isEOF() bool {
+	return t.index >= len(t.input)-1
+}
+
+func (t *Tokeniser) nextChar() uint8 {
+	if t.isEOF() {
+		return t.input[len(t.input)-1]
 	}
-	if input[0] == '(' {
-		return Token{Kind: TokLBracket}, input[1:]
+	t.index += 1
+	t.col += 1
+	return t.input[t.index]
+}
+
+func (t *Tokeniser) consumeSpaces() {
+	for !t.isEOF() && asciiSpace[t.input[t.index]] == 1 {
+		if t.input[t.index] == '\n' {
+			t.line += 1
+			t.col = 1
+		}
+		t.nextChar()
 	}
-	if input[0] == ')' {
-		return Token{Kind: TokRBracket}, input[1:]
+}
+
+func (t Tokeniser) currentPos() FilePos {
+	return FilePos{Line: t.line, Col: t.col, Position: t.index}
+}
+
+func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, FileRange) {
+	start := t.currentPos()
+	acc := ""
+	for !t.isEOF() && condition(t.input[t.index]) {
+		acc += string(t.input[t.index])
+		t.nextChar()
+	}
+	return acc, FileRange{Start: start, End: t.currentPos()}
+}
+
+func (t *Tokeniser) nextToken() (Token, bool) {
+	t.consumeSpaces()
+	if t.isEOF() {
+		return Token{}, false
+	}
+	nextChar := t.input[t.index]
+	start := t.currentPos()
+	if nextChar == '(' {
+		t.nextChar()
+		return Token{Kind: TokLBracket, Range: FileRange{Start: start, End: t.currentPos()}}, true
+	}
+	if nextChar == ')' {
+		t.nextChar()
+		return Token{Kind: TokRBracket, Range: FileRange{Start: start, End: t.currentPos()}}, true
 	}
 	// TODO should improve this, probably just use regexp
-	if isDigit(input[0]) || input[0] == '-' {
+	if isDigit(nextChar) || nextChar == '-' {
 		isNeg := false
-		if input[0] == '-' {
+		if nextChar == '-' {
 			isNeg = true
-			input = input[1:]
+			t.nextChar()
 		}
-		number, remaining := takeWhile(input, isDigit)
+		number, fRange := t.consumeWhile(isDigit)
 		if isNeg {
 			number = "-" + number
 		}
-		return Token{Kind: TokNumber, Data: number}, remaining
+		return Token{Kind: TokNumber, Data: number, Range: fRange}, true
 	}
-	if isAlphaNumeric(input[0]) {
-		number, remaining := takeWhile(input, isAlphaNumeric)
-		return Token{Kind: TokString, Data: number}, remaining
+	if isAlphaNumeric(nextChar) {
+		number, fRange := t.consumeWhile(isAlphaNumeric)
+		return Token{Kind: TokString, Data: number, Range: fRange}, true
 	}
 
-	return Token{}, ""
+	return Token{}, false
+}
+
+func (t *Tokeniser) doTokenise() []Token {
+	tokens := make([]Token, 0)
+	for {
+		token, ok := t.nextToken()
+		if !ok {
+			return tokens
+		}
+		tokens = append(tokens, token)
+	}
 }
 
 func Tokenise(input string) []Token {
-	tokens := make([]Token, 0)
-	for len(input) > 0 {
-		token, remaining := nextToken(input)
-		input = remaining
-		tokens = append(tokens, token)
-	}
-	return tokens
+	tok := Tokeniser{}
+	tok.New(input)
+	return tok.doTokenise()
 }
 
 type Parser struct {

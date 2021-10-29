@@ -16,6 +16,14 @@ func main() {
 		test.Run()
 		eval.RunRepl()
 	}
+	if len(args) == 1 && args[0] == "-i" {
+		eval.RunRepl()
+		return
+	}
+	if len(args) == 1 && args[0] == "-t" {
+		test.Run()
+		return
+	}
 	if len(args) == 1 {
 		fileContents, err := util.ReadFile(args[0])
 		if err != nil {
