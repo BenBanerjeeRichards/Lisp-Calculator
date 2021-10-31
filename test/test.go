@@ -5,6 +5,7 @@ import (
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
+	"github.com/benbanerjeerichards/lisp-calculator/parser"
 )
 
 func printTestFailedErr(code string, err error) {
@@ -13,6 +14,10 @@ func printTestFailedErr(code string, err error) {
 
 func printTestFailed(code string, expected float64, actual float64) {
 	fmt.Printf("Failed: %s\nReason: Expected %f but got %f \n", code, expected, actual)
+}
+
+func printTokensFailed(code string, message string, expected []parser.Token, actual []parser.Token) {
+	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
 }
 
 func ExpectNumber(code string, expected float64) bool {
@@ -27,7 +32,7 @@ func ExpectNumber(code string, expected float64) bool {
 		return false
 	}
 	if !evalResult.HasValue {
-		fmt.Printf("Failed: %s\nReason: Expected %f but got <NIL>", code, expected)
+		fmt.Printf("Failed: %s\nReason: Expected %f but got <NIL>\n", code, expected)
 		return false
 	}
 	if evalResult.Value != expected {
@@ -37,7 +42,32 @@ func ExpectNumber(code string, expected float64) bool {
 	return true
 }
 
+func ExpectTokens(code string, expected []parser.Token) bool {
+	actual := parser.Tokenise(code)
+	if len(actual) != len(expected) {
+		printTokensFailed(code, fmt.Sprintf("Expected %d tokens but got %d\n", len(expected), len(actual)), expected, actual)
+		return false
+	}
+
+	for i, eTok := range expected {
+		if eTok.Kind != actual[i].Kind || eTok.Data != actual[i].Data {
+			printTokensFailed(code, fmt.Sprintf("Token %d error", i), expected, actual)
+			return false
+		}
+	}
+
+	return true
+}
+
+func mkToken(kind string, data string) parser.Token {
+	return parser.Token{Kind: kind, Data: data}
+}
+
 func Run() {
+	ExpectTokens("(5)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokNumber, "5"),
+		mkToken(parser.TokRBracket, "")})
+	ExpectTokens("(hello", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokString, "hello")})
+
 	ExpectNumber("(5)", 5)
 	ExpectNumber("(5.5)", 5.5)
 	ExpectNumber("(-5.5)", -5.5)
