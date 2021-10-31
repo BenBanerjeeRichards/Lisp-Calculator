@@ -13,13 +13,72 @@ import (
 )
 
 type Env struct {
-	Variables map[string]float64
+	Variables map[string]Value
 	Functions map[string]ast.FuncDefStmt
 }
 
 func (env *Env) New() {
-	env.Variables = make(map[string]float64)
+	env.Variables = make(map[string]Value)
 	env.Functions = make(map[string]ast.FuncDefStmt)
+}
+
+const (
+	NumType    = "num"
+	BoolType   = "bool"
+	StringType = "string"
+	NullType   = "null"
+	ListType   = "list"
+)
+
+type Value struct {
+	Kind   string
+	Num    float64
+	Bool   bool
+	String string
+	List   []interface{}
+}
+
+func (v *Value) NewNum(value float64) {
+	v.Kind = NumType
+	v.Num = value
+}
+
+func (v *Value) NewString(value string) {
+	v.Kind = StringType
+	v.String = value
+}
+
+func (v *Value) NewBool(value bool) {
+	v.Kind = BoolType
+	v.Bool = value
+}
+
+func (v *Value) NewList(value []interface{}) {
+	v.Kind = ListType
+	v.List = value
+}
+func (v *Value) NewNull() {
+	v.Kind = NullType
+}
+
+// Cant use Stringer interface due to name conflict
+func (val Value) ToString() string {
+	switch val.Kind {
+	case NumType:
+		return fmt.Sprint(val.Num)
+	case StringType:
+		return "\"" + val.String + "\""
+	case BoolType:
+		if val.Bool {
+			return "true"
+		}
+		return "false"
+	case NullType:
+		return "null"
+	default:
+		return "Unknown type"
+	}
+
 }
 
 type EvalResult struct {
@@ -28,9 +87,9 @@ type EvalResult struct {
 }
 
 // Eval every ast and return the value of the final one
-func EvalProgram(asts []ast.Ast) (EvalResult, error) {
+func EvalProgram(asts []ast.Ast) (Value, error) {
 	if len(asts) == 0 {
-		return EvalResult{}, errors.New("eval program requires non-zero numbers of asts")
+		return Value{}, errors.New("eval program requires non-zero numbers of asts")
 	}
 	env := Env{}
 	env.New()
@@ -38,31 +97,32 @@ func EvalProgram(asts []ast.Ast) (EvalResult, error) {
 	for i, ast := range asts {
 		result, err := Eval(ast, &env)
 		if err != nil {
-			return EvalResult{}, err
+			return Value{}, err
 		}
 		if i == len(asts)-1 {
 			return result, nil
 		}
 	}
-	return EvalResult{}, errors.New("unknown error?")
+	return Value{}, errors.New("unknown error?")
 }
 
-func Eval(astNode ast.Ast, env *Env) (EvalResult, error) {
+func Eval(astNode ast.Ast, env *Env) (Value, error) {
 	if astNode.Kind == ast.StmtType {
 		err := evalStmt(astNode.Statement, env)
 		if err != nil {
-			return EvalResult{}, err
+			return Value{}, err
 		}
-		return EvalResult{HasValue: false}, nil
+
+		return Value{Kind: NullType}, nil
 	}
 	if astNode.Kind == ast.ExprType {
 		val, err := evalExpr(astNode.Expression, *env)
 		if err != nil {
-			return EvalResult{}, err
+			return Value{}, err
 		}
-		return EvalResult{HasValue: true, Value: val}, nil
+		return val, nil
 	}
-	return EvalResult{}, errors.New("?")
+	return Value{}, errors.New("?")
 }
 
 func evalStmt(node ast.Stmt, env *Env) error {
@@ -81,33 +141,43 @@ func evalStmt(node ast.Stmt, env *Env) error {
 	return nil
 }
 
-func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (float64, error) {
+func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
 	lhsValue, err := evalExpr(lhs, env)
 	if err != nil {
-		return 0, err
+		return Value{}, err
 	}
 	rhsValue, err := evalExpr(rhs, env)
 	if err != nil {
-		return 0, err
+		return Value{}, err
 	}
-	return f(lhsValue, rhsValue), nil
+	if lhsValue.Kind != NumType {
+		return Value{}, errors.New("type error for lhs to binary op")
+	}
+	if rhsValue.Kind != NumType {
+		return Value{}, errors.New("type error for rhs to binary op")
+	}
+	val := Value{}
+	val.NewNum(f(lhsValue.Num, rhsValue.Num))
+	return val, nil
 }
 
-func evalExpr(node ast.Expr, env Env) (float64, error) {
+func evalExpr(node ast.Expr, env Env) (Value, error) {
 	switch exprNode := node.(type) {
 	case ast.NumberExpr:
-		return exprNode.Value, nil
+		val := Value{}
+		val.NewNum(exprNode.Value)
+		return val, nil
 	case ast.VarUseExpr:
 		if val, ok := env.Variables[exprNode.Identifier]; ok {
 			return val, nil
 		} else {
-			return 0, fmt.Errorf("undeclared variable %s", exprNode.Identifier)
+			return Value{}, fmt.Errorf("undeclared variable %s", exprNode.Identifier)
 		}
 	case ast.FuncAppExpr:
 		// First look up in function defintions, then try builtins
 		if funcDef, ok := env.Functions[exprNode.Identifier]; ok {
 			if len(funcDef.Args) != len(exprNode.Args) {
-				return 0, fmt.Errorf("bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))
+				return Value{}, fmt.Errorf("bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))
 			}
 			funcAppEnv := Env{}
 			funcAppEnv.New()
@@ -116,7 +186,7 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 				argExpr := exprNode.Args[i]
 				argEvalValue, err := evalExpr(argExpr, env)
 				if err != nil {
-					return 0, fmt.Errorf("failed to eval argument %d - %v", i+1, err)
+					return Value{}, fmt.Errorf("failed to eval argument %d - %v", i+1, err)
 				}
 
 				funcAppEnv.Variables[argName] = argEvalValue
@@ -124,62 +194,67 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 			for i, funcDefAst := range funcDef.Body {
 				evalResult, err := Eval(funcDefAst, &funcAppEnv)
 				if err != nil {
-					return 0, err
+					return Value{}, err
 				}
 				if i == len(funcDef.Body)-1 {
-					if !evalResult.HasValue {
+					if evalResult.Kind == NullType {
 						// TODO define this properly - should be a parse error
-						return 0, errors.New("can not use function as expression as it ends with a statement")
+						return Value{}, errors.New("can not use function as expression as it ends with null")
 					}
-					return evalResult.Value, nil
+					return evalResult, nil
 				}
 			}
 		}
 		switch exprNode.Identifier {
 		case "+":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "-":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "*":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "/":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "^":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, exprNode.Args[0], exprNode.Args[1], env)
 		case "log":
 			if len(exprNode.Args) != 2 {
-				return 0, errors.New("binary funtion add requires two parameters")
+				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, exprNode.Args[0], exprNode.Args[1], env)
 		case "sqrt":
 			if len(exprNode.Args) != 1 {
-				return 0, errors.New("unary funtion add requires two parameters")
+				return Value{}, errors.New("unary funtion add requires two parameters")
 			}
 			sqrtOf, err := evalExpr(exprNode.Args[0], env)
 			if err != nil {
-				return 0, err
+				return Value{}, err
 			}
-			return math.Sqrt(sqrtOf), nil
+			if sqrtOf.Kind != NumType {
+				return Value{}, errors.New("type error for arg to sqrt")
+			}
+			val := Value{}
+			val.NewNum(math.Sqrt(sqrtOf.Num))
+			return val, nil
 		default:
-			return 0, fmt.Errorf("unknown function %s", exprNode.Identifier)
+			return Value{}, fmt.Errorf("unknown function %s", exprNode.Identifier)
 		}
 	default:
-		return 0, fmt.Errorf("unknown expression %v", node)
+		return Value{}, fmt.Errorf("unknown expression %v", node)
 	}
 }
 
@@ -217,8 +292,6 @@ func RunRepl() {
 			fmt.Println("Eval Error: ", err.Error())
 			continue
 		}
-		if val.HasValue {
-			fmt.Println(val.Value)
-		}
+		fmt.Println(val.ToString())
 	}
 }

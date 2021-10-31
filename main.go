@@ -40,8 +40,6 @@ func main() {
 			}
 			return
 		}
-		if evalResult.HasValue {
-			fmt.Println(evalResult.Value)
-		}
+		fmt.Println(evalResult.ToString())
 	}
 }

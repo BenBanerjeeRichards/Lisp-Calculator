@@ -34,14 +34,14 @@ func AnnotateError(code string, error ast.AstError) string {
 	return output
 }
 
-func ParseAndEval(code string) (eval.EvalResult, error) {
+func ParseAndEval(code string) (eval.Value, error) {
 	ast, err := Ast(code)
 	if err != nil {
-		return eval.EvalResult{}, err
+		return eval.Value{}, err
 	}
 	evalResult, err := eval.EvalProgram(ast)
 	if err != nil {
-		return eval.EvalResult{}, err
+		return eval.Value{}, err
 	}
 	return evalResult, nil
 }

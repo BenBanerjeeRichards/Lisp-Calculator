@@ -31,12 +31,12 @@ func ExpectNumber(code string, expected float64) bool {
 		printTestFailedErr(code, err)
 		return false
 	}
-	if !evalResult.HasValue {
-		fmt.Printf("Failed: %s\nReason: Expected %f but got <NIL>\n", code, expected)
+	if evalResult.Kind != eval.NumType {
+		fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
 		return false
 	}
-	if evalResult.Value != expected {
-		printTestFailed(code, expected, evalResult.Value)
+	if evalResult.Num != expected {
+		printTestFailed(code, expected, evalResult.Num)
 		return false
 	}
 	return true
