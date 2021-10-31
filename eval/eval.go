@@ -199,7 +199,6 @@ func RunRepl() {
 		}
 		text = text[:len(text)-1]
 		tokens := parser.Tokenise(text)
-		fmt.Println(tokens)
 		parser := parser.Parser{}
 		parser.New(tokens)
 		expr, err := parser.ParseExpression()

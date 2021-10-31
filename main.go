@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/test"
@@ -32,7 +33,11 @@ func main() {
 		}
 		evalResult, err := calc.ParseAndEval(fileContents)
 		if err != nil {
-			fmt.Printf("Erorr: %s\n", err.Error())
+			if astError, ok := err.(ast.AstError); ok {
+				fmt.Println(calc.AnnotateError(fileContents, astError))
+			} else {
+				fmt.Println(err)
+			}
 			return
 		}
 		if evalResult.HasValue {
