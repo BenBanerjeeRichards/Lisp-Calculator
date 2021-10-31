@@ -1,6 +1,10 @@
 package parser
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 const (
 	TokNumber   = "TokNumber"
@@ -12,6 +16,7 @@ const (
 // Taken from standard library (strings)
 var asciiSpace = [256]uint8{'\t': 1, '\n': 1, '\v': 1, '\f': 1, '\r': 1, ' ': 1}
 var eof uint8 = 0xFF
+var identifierRegex, _ = regexp.Compile(`^[^0-9\s()][^()\s]*$`)
 
 type FilePos struct {
 	Line     int
@@ -50,8 +55,8 @@ func isDigit(c uint8) bool {
 	return (c >= 48 && c <= 57) || c == '.'
 }
 
-func isAlphaNumeric(c uint8) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+func isIdentifierChar(c uint8) bool {
+	return ((c >= '!' && c <= '/') || (c >= ':' && c < eof)) && (c != '(' && c != ')')
 }
 
 type Tokeniser struct {
@@ -80,7 +85,7 @@ func (t *Tokeniser) nextChar() uint8 {
 }
 
 func (t *Tokeniser) consumeSpaces() {
-	for !t.isEOF() && asciiSpace[t.Current()] == 1 {
+	for !t.isEOF() && isSpace(t.Current()) {
 		if t.Current() == '\n' {
 			t.line += 1
 			t.col = 1
@@ -98,6 +103,22 @@ func (t Tokeniser) Current() uint8 {
 		return eof
 	}
 	return t.input[t.index]
+}
+
+// Peek ahead character stream, will return EOF if requested character exists after end of string
+// Peek(0) = Current()
+func (t Tokeniser) Peek(n int) uint8 {
+	if t.index+n > len(t.input)-1 {
+		return eof
+	}
+	return t.input[t.index+n]
+}
+
+func (t *Tokeniser) SeekAhead(amount int) {
+	if t.index+amount > len(t.input) {
+		amount = len(t.input) - 1
+	}
+	t.index += amount
 }
 
 func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, FileRange) {
@@ -123,7 +144,7 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 		return Token{Kind: TokRBracket, Range: FileRange{Start: start, End: t.currentPos()}}, true
 	}
 	// TODO should improve this, probably just use regexp
-	if isDigit(nextChar) || nextChar == '-' {
+	if isDigit(nextChar) || (nextChar == '-' && isDigit(t.Peek(1))) {
 		isNeg := false
 		if nextChar == '-' {
 			isNeg = true
@@ -135,9 +156,20 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 		}
 		return Token{Kind: TokNumber, Data: number, Range: fRange}, true
 	}
-	if isAlphaNumeric(nextChar) {
-		number, fRange := t.consumeWhile(isAlphaNumeric)
-		return Token{Kind: TokString, Data: number, Range: fRange}, true
+
+	// Now attempt to match an identifier
+	// Scan all non-whitespace characters and then test using regex
+	var identBuilder strings.Builder
+	i := 0
+	for !isSpace(nextChar) && nextChar != eof && nextChar != '(' && nextChar != ')' {
+		identBuilder.WriteByte(nextChar)
+		i += 1
+		nextChar = t.Peek(i)
+	}
+	if identifierRegex.MatchString(identBuilder.String()) {
+		t.SeekAhead(i)
+		return Token{Kind: TokString, Data: identBuilder.String(),
+			Range: FileRange{Start: start, End: t.currentPos()}}, true
 	}
 
 	if t.isEOF() {
@@ -165,4 +197,8 @@ func Tokenise(input string) []Token {
 	tok := Tokeniser{}
 	tok.New(input)
 	return tok.doTokenise()
+}
+
+func isSpace(c uint8) bool {
+	return asciiSpace[c] == 1
 }

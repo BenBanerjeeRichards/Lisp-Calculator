@@ -136,27 +136,27 @@ func evalExpr(node ast.Expr, env Env) (float64, error) {
 			}
 		}
 		switch exprNode.Identifier {
-		case "add":
+		case "+":
 			if len(exprNode.Args) != 2 {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env)
-		case "sub":
+		case "-":
 			if len(exprNode.Args) != 2 {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env)
-		case "mul":
+		case "*":
 			if len(exprNode.Args) != 2 {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env)
-		case "div":
+		case "/":
 			if len(exprNode.Args) != 2 {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
-		case "pow":
+		case "^":
 			if len(exprNode.Args) != 2 {
 				return 0, errors.New("binary funtion add requires two parameters")
 			}
@@ -212,8 +212,6 @@ func RunRepl() {
 			fmt.Println("Ast Error: ", err)
 			continue
 		}
-		fmt.Println(ast)
-
 		val, err := Eval(ast, &env)
 		if err != nil {
 			fmt.Println("Eval Error: ", err.Error())

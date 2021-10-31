@@ -91,12 +91,12 @@ type AstConstructor struct {
 
 func (constructor *AstConstructor) New() {
 	constructor.FunctionNames = make(map[string]bool)
-	constructor.FunctionNames["add"] = true
-	constructor.FunctionNames["mul"] = true
-	constructor.FunctionNames["div"] = true
-	constructor.FunctionNames["sub"] = true
+	constructor.FunctionNames["+"] = true
+	constructor.FunctionNames["*"] = true
+	constructor.FunctionNames["/"] = true
+	constructor.FunctionNames["-"] = true
 	constructor.FunctionNames["log"] = true
-	constructor.FunctionNames["pow"] = true
+	constructor.FunctionNames["^"] = true
 	constructor.FunctionNames["sqrt"] = true
 }
 
