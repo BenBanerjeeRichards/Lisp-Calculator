@@ -7,6 +7,7 @@ import (
 
 const (
 	NumberNode     = "NumberNode"
+	BoolNode       = "BoolNode"
 	LiteralNode    = "LiteralNode"
 	ExpressionNode = "ExpressionNode"
 	ProgramNode    = "ProgramNode"
@@ -31,6 +32,8 @@ func (node Node) Label() string {
 	case ProgramNode:
 		return "Prog"
 	case NumberNode:
+		return node.Data
+	case BoolNode:
 		return node.Data
 	case LiteralNode:
 		return fmt.Sprintf("'%s'", node.Data)
@@ -83,6 +86,9 @@ func (p *Parser) parseLiteral() (Node, error) {
 	}
 	if token.Kind == "TokString" {
 		p.nextToken()
+		if token.Data == "true" || token.Data == "false" {
+			return Node{Kind: BoolNode, Data: token.Data, Range: token.Range}, nil
+		}
 		return Node{Kind: LiteralNode, Data: token.Data, Range: token.Range}, nil
 	}
 	return Node{}, errors.New("not a string")

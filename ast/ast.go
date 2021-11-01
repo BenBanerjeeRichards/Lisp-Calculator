@@ -54,6 +54,10 @@ type NumberExpr struct {
 	Value float64
 }
 
+type BoolExpr struct {
+	Value bool
+}
+
 type AstError struct {
 	Range  parser.FileRange
 	Simple string
@@ -69,6 +73,7 @@ func (a AstError) Error() string {
 func (FuncAppExpr) exprType() {}
 func (NumberExpr) exprType()  {}
 func (VarUseExpr) exprType()  {}
+func (BoolExpr) exprType()    {}
 
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
@@ -174,6 +179,15 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 				Simple: fmt.Sprintf("Failed to parse `%s` as float", node.Data)}
 		}
 		return NumberExpr{Value: f}, nil
+	case parser.BoolNode:
+		if node.Data == "true" {
+			return BoolExpr{Value: true}, nil
+		} else if node.Data == "false" {
+			return BoolExpr{Value: false}, nil
+		} else {
+			return nil, AstError{Range: node.Range,
+				Simple: fmt.Sprintf("Failed to parse `%s` as bool", node.Data)}
+		}
 	case parser.LiteralNode:
 		return VarUseExpr{Identifier: node.Data}, nil
 	case parser.ExpressionNode:

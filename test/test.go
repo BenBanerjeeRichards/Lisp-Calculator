@@ -12,34 +12,59 @@ func printTestFailedErr(code string, err error) {
 	fmt.Printf("Failed: %s\nReason: Error - %v\n", code, err)
 }
 
-func printTestFailed(code string, expected float64, actual float64) {
+func printTestFailedNum(code string, expected float64, actual float64) {
 	fmt.Printf("Failed: %s\nReason: Expected %f but got %f \n", code, expected, actual)
+}
+
+func printTestFailedBool(code string, expected bool, actual bool) {
+	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
 
 func printTokensFailed(code string, message string, expected []parser.Token, actual []parser.Token) {
 	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
 }
 
-func ExpectNumber(code string, expected float64) bool {
+func evalProgram(code string) (eval.Value, bool) {
 	asts, err := calc.Ast(code)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return false
+		return eval.Value{}, false
 	}
 	evalResult, err := eval.EvalProgram(asts)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return false
+		return eval.Value{}, false
 	}
-	if evalResult.Kind != eval.NumType {
-		fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
-		return false
-	}
-	if evalResult.Num != expected {
-		printTestFailed(code, expected, evalResult.Num)
-		return false
+	return evalResult, true
+}
+
+func ExpectNumber(code string, expected float64) bool {
+	if evalResult, ok := evalProgram(code); ok {
+		if evalResult.Kind != eval.NumType {
+			fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
+			return false
+		}
+		if evalResult.Num != expected {
+			printTestFailedNum(code, expected, evalResult.Num)
+			return false
+		}
 	}
 	return true
+}
+
+func ExpectBool(code string, expected bool) bool {
+	if evalResult, ok := evalProgram(code); ok {
+		if evalResult.Kind != eval.BoolType {
+			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
+			return false
+		}
+		if evalResult.Bool != expected {
+			printTestFailedBool(code, expected, evalResult.Bool)
+			return false
+		}
+	}
+	return true
+
 }
 
 func ExpectTokens(code string, expected []parser.Token) bool {
@@ -81,6 +106,10 @@ func Run() {
 	ExpectNumber("(+ 5 (+ 3 6))", 14)
 	ExpectNumber("(+ (+ 10 20) (+ 3 6))", 39)
 	ExpectNumber("(+ (+ 10 20) 100)", 130)
+
+	ExpectBool("(true)", true)
+	ExpectBool("(false)", false)
+
 	ExpectNumber("(def x 10)(x)", 10)
 	ExpectNumber("(def x1 10)(x1)", 10)
 	ExpectNumber("(def var10able 10)(var10able)", 10)

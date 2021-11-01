@@ -167,6 +167,10 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		val := Value{}
 		val.NewNum(exprNode.Value)
 		return val, nil
+	case ast.BoolExpr:
+		val := Value{}
+		val.NewBool(exprNode.Value)
+		return val, nil
 	case ast.VarUseExpr:
 		if val, ok := env.Variables[exprNode.Identifier]; ok {
 			return val, nil
