@@ -66,6 +66,16 @@ func ExpectBool(code string, expected bool) bool {
 	return true
 
 }
+func ExpectNull(code string) bool {
+	if evalResult, ok := evalProgram(code); ok {
+		if evalResult.Kind != eval.NullType {
+			fmt.Printf("Failed: %s\nReason: Expected null but got type %s\n", code, evalResult.Kind)
+			return false
+		}
+	}
+	return true
+
+}
 
 func ExpectTokens(code string, expected []parser.Token) bool {
 	actual := parser.Tokenise(code)
@@ -109,8 +119,23 @@ func Run() {
 
 	ExpectBool("(true)", true)
 	ExpectBool("(false)", false)
+	ExpectBool("(< 10 5)", false)
+	ExpectBool("(< 5 10)", true)
+	ExpectBool("(> 5 10)", false)
+	ExpectBool("(> 10 5)", true)
+	ExpectBool("(> 10 10)", false)
+	ExpectBool("(< 10 10)", false)
+	ExpectBool("(>= 10 5)", true)
+	ExpectBool("(>= 5 10)", false)
+	ExpectBool("(>= 10 10)", true)
+	ExpectBool("(<= 10 10)", true)
+	ExpectBool("(<= 5 10)", true)
+	ExpectBool("(<= 10 5)", false)
+	ExpectBool("(= 10 10)", true)
+	ExpectBool("(= 10 7)", false)
 
 	ExpectNumber("(def x 10)(x)", 10)
+	ExpectNumber("(def x (+ 3 7))(x)", 10)
 	ExpectNumber("(def x1 10)(x1)", 10)
 	ExpectNumber("(def var10able 10)(var10able)", 10)
 	ExpectNumber("(def x 10)(+ x 5)", 15)
@@ -148,4 +173,17 @@ func Run() {
 			(* 2 a)))     
 		(first))
 	(quadraticFirst 2 5 3)`, -1)
+
+	ExpectNumber("(if true 4 2)", 4)
+	ExpectNumber("(if true 4)", 4)
+	ExpectNull("(if false 4)")
+	ExpectNumber("(if false 4 2)", 2)
+	ExpectNumber("(if (< 10 5) (+ 4 10) (- 10 4))", 6)
+	ExpectNumber(`(if (< 10 5) 
+		(+ 4 10) 
+		((def x 10)
+		 (def y 20)
+		 (- x y)
+	))`, -10)
+
 }

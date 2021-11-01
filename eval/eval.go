@@ -161,6 +161,26 @@ func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Exp
 	return val, nil
 }
 
+func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
+	lhsValue, err := evalExpr(lhs, env)
+	if err != nil {
+		return Value{}, err
+	}
+	rhsValue, err := evalExpr(rhs, env)
+	if err != nil {
+		return Value{}, err
+	}
+	if lhsValue.Kind != NumType {
+		return Value{}, errors.New("type error for lhs to binary op")
+	}
+	if rhsValue.Kind != NumType {
+		return Value{}, errors.New("type error for rhs to binary op")
+	}
+	val := Value{}
+	val.NewBool(f(lhsValue.Num, rhsValue.Num))
+	return val, nil
+}
+
 func evalExpr(node ast.Expr, env Env) (Value, error) {
 	switch exprNode := node.(type) {
 	case ast.NumberExpr:
@@ -176,6 +196,49 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			return val, nil
 		} else {
 			return Value{}, fmt.Errorf("undeclared variable %s", exprNode.Identifier)
+		}
+	case ast.IfElseExpr:
+		condRes, err := evalExpr(exprNode.Condition, env)
+		if err != nil {
+			return Value{}, err
+		}
+		if condRes.Kind != BoolType {
+			return Value{}, errors.New("bad type for ifelse condition")
+		}
+		branch := exprNode.IfBranch
+		if !condRes.Bool {
+			branch = exprNode.ElseBranch
+		}
+		for i, ast := range branch {
+			evalResult, err := Eval(ast, &env)
+			if err != nil {
+				return Value{}, err
+			}
+			if i == len(branch)-1 {
+				return evalResult, nil
+			}
+		}
+	case ast.IfOnlyExpr:
+		condRes, err := evalExpr(exprNode.Condition, env)
+		if err != nil {
+			return Value{}, err
+		}
+		if condRes.Kind != BoolType {
+			return Value{}, errors.New("bad type for ifelse condition")
+		}
+		if !condRes.Bool {
+			val := Value{}
+			val.NewNull()
+			return val, nil
+		}
+		for i, ast := range exprNode.IfBranch {
+			evalResult, err := Eval(ast, &env)
+			if err != nil {
+				return Value{}, err
+			}
+			if i == len(exprNode.IfBranch)-1 {
+				return evalResult, nil
+			}
 		}
 	case ast.FuncAppExpr:
 		// First look up in function defintions, then try builtins
@@ -201,10 +264,6 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 					return Value{}, err
 				}
 				if i == len(funcDef.Body)-1 {
-					if evalResult.Kind == NullType {
-						// TODO define this properly - should be a parse error
-						return Value{}, errors.New("can not use function as expression as it ends with null")
-					}
 					return evalResult, nil
 				}
 			}
@@ -254,12 +313,39 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			val := Value{}
 			val.NewNum(math.Sqrt(sqrtOf.Num))
 			return val, nil
+		case ">":
+			if len(exprNode.Args) != 2 {
+				return Value{}, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case ">=":
+			if len(exprNode.Args) != 2 {
+				return Value{}, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "<":
+			if len(exprNode.Args) != 2 {
+				return Value{}, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "<=":
+			if len(exprNode.Args) != 2 {
+				return Value{}, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "=":
+			if len(exprNode.Args) != 2 {
+				return Value{}, errors.New("binary funtion add requires two parameters")
+			}
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 == f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		default:
 			return Value{}, fmt.Errorf("unknown function %s", exprNode.Identifier)
 		}
+
 	default:
 		return Value{}, fmt.Errorf("unknown expression %v", node)
 	}
+	return Value{}, errors.New("?")
 }
 
 func RunRepl() {

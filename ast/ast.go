@@ -58,6 +58,29 @@ type BoolExpr struct {
 	Value bool
 }
 
+type IfElseExpr struct {
+	Condition  Expr
+	IfBranch   []Ast
+	ElseBranch []Ast
+}
+
+type IfOnlyExpr struct {
+	Condition Expr
+	IfBranch  []Ast
+}
+
+// These are just to prevent assigning a statement to an expression
+// Same as what go compiler does
+func (FuncAppExpr) exprType() {}
+func (NumberExpr) exprType()  {}
+func (VarUseExpr) exprType()  {}
+func (BoolExpr) exprType()    {}
+func (IfElseExpr) exprType()  {}
+func (IfOnlyExpr) exprType()  {}
+
+func (VarDefStmt) stmtType()  {}
+func (FuncDefStmt) stmtType() {}
+
 type AstError struct {
 	Range  parser.FileRange
 	Simple string
@@ -67,16 +90,6 @@ type AstError struct {
 func (a AstError) Error() string {
 	return fmt.Sprintf("[%d:%d-%d:%d]: %s (%s)", a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
 }
-
-// These are just to prevent assigning a statement to an expression
-// Same as what go compiler does
-func (FuncAppExpr) exprType() {}
-func (NumberExpr) exprType()  {}
-func (VarUseExpr) exprType()  {}
-func (BoolExpr) exprType()    {}
-
-func (VarDefStmt) stmtType()  {}
-func (FuncDefStmt) stmtType() {}
 
 func (ast *Ast) newStatement(stmt Stmt) {
 	ast.Kind = StmtType
@@ -103,6 +116,11 @@ func (constructor *AstConstructor) New() {
 	constructor.FunctionNames["log"] = true
 	constructor.FunctionNames["^"] = true
 	constructor.FunctionNames["sqrt"] = true
+	constructor.FunctionNames[">"] = true
+	constructor.FunctionNames[">="] = true
+	constructor.FunctionNames["<"] = true
+	constructor.FunctionNames["<="] = true
+	constructor.FunctionNames["="] = true
 }
 
 func (constructor *AstConstructor) CreateAst(expr parser.Node) ([]Ast, error) {
@@ -196,9 +214,10 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 				Simple: "Parse error",
 				Detail: "Expression must have non-zero children"}
 		}
-		// Determine if we have a function or variable declaration
 		if litNode, ok := safeTraverse(node, []int{0, 0}); ok {
-			if _, isFunc := constructor.FunctionNames[litNode.Data]; isFunc {
+			if litNode.Data == "if" {
+				return constructor.createIfExpr(node)
+			} else if _, isFunc := constructor.FunctionNames[litNode.Data]; isFunc {
 				return constructor.createFuncAppExpr(node)
 			}
 		}
@@ -206,13 +225,53 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 			return constructor.createAstExpression(node.Children[0])
 		} else {
 			return nil, AstError{Simple: "Parse Error",
-				Detail: fmt.Sprintf("expected node kind %s", node.Kind),
+				Detail: fmt.Sprintf("unexpected node kind %s with %d children", node.Kind, len(node.Children)),
 				Range:  node.Range}
 		}
 	}
 	return nil, AstError{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
+}
+
+func (constructor *AstConstructor) createIfExpr(node parser.Node) (Expr, error) {
+	if len(node.Children) != 4 && len(node.Children) != 3 {
+		return nil, AstError{Range: node.Range,
+			Simple: "Syntax error for if-else",
+			Detail: fmt.Sprintf("Expected 3 or 5 children for if, got %d", len(node.Children)),
+		}
+	}
+	cond, err := constructor.createAstExpression(node.Children[1])
+	if err != nil {
+		return nil, err
+	}
+	ifBranch, err := constructor.createBody(node.Children[2])
+	if err != nil {
+		return nil, err
+	}
+
+	if len(node.Children) == 4 {
+		elseBranch, err := constructor.createBody(node.Children[3])
+		if err != nil {
+			return nil, err
+		}
+		return IfElseExpr{Condition: cond, IfBranch: ifBranch, ElseBranch: elseBranch}, nil
+	} else {
+		return IfOnlyExpr{Condition: cond, IfBranch: ifBranch}, nil
+	}
+}
+
+func (constructor *AstConstructor) createBody(node parser.Node) ([]Ast, error) {
+	if len(node.Children) > 0 && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind != parser.ExpressionNode {
+		// e.g. (+ 10 4)
+		ast, err := constructor.CreateExpressionAst(node)
+		if err != nil {
+			return []Ast{}, err
+		}
+		return []Ast{ast}, nil
+	} else {
+		return constructor.CreateAst(node)
+	}
 }
 
 func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, error) {
@@ -295,8 +354,14 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 			funcDefExpr.Args = append(funcDefExpr.Args, argExpr.Children[0].Data)
 		}
 
+		// Function body
+		// We allow for a single direct value e.g. (defun f () 1)
+		// But anything else must be in its own expression
 		for _, expr := range node.Children[3:] {
 			exprAst, err := constructor.CreateExpressionAst(expr)
+			if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
+				return nil, AstError{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
+			}
 			if err != nil {
 				return nil, err
 			}
