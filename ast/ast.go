@@ -69,6 +69,11 @@ type IfOnlyExpr struct {
 	IfBranch  []Ast
 }
 
+type WhileStmt struct {
+	Condition Expr
+	Body      []Ast
+}
+
 // These are just to prevent assigning a statement to an expression
 // Same as what go compiler does
 func (FuncAppExpr) exprType() {}
@@ -80,6 +85,7 @@ func (IfOnlyExpr) exprType()  {}
 
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
+func (WhileStmt) stmtType()   {}
 
 type AstError struct {
 	Range  parser.FileRange
@@ -168,7 +174,7 @@ func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
 }
 
 func (constructor *AstConstructor) CreateExpressionAst(node parser.Node) (Ast, error) {
-	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun") {
+	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while") {
 		varDefStmt, err := constructor.createAstStatement(node)
 		if err != nil {
 			return Ast{}, err
@@ -232,6 +238,32 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 	return nil, AstError{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
+}
+
+func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, error) {
+	if len(node.Children) < 3 {
+		return nil, AstError{Range: node.Range,
+			Simple: "Syntax error for while",
+			Detail: fmt.Sprintf("Expected >= 3 children for while, got %d", len(node.Children)),
+		}
+	}
+	cond, err := constructor.createAstExpression(node.Children[1])
+	if err != nil {
+		return nil, err
+	}
+	whileStmt := WhileStmt{Condition: cond, Body: make([]Ast, 0)}
+	for _, expr := range node.Children[2:] {
+		exprAst, err := constructor.CreateExpressionAst(expr)
+		if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
+			return nil, AstError{Range: expr.Range, Simple: "Syntax error", Detail: "While requires body to be contained in expression"}
+		}
+		if err != nil {
+			return nil, err
+		}
+		whileStmt.Body = append(whileStmt.Body, exprAst)
+	}
+
+	return whileStmt, nil
 }
 
 func (constructor *AstConstructor) createIfExpr(node parser.Node) (Expr, error) {
@@ -369,6 +401,8 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 		}
 
 		return funcDefExpr, nil
+	} else if literal == "while" {
+		return constructor.createWhileLoop(node)
 	}
 	return nil, AstError{
 		Simple: "Parse error",

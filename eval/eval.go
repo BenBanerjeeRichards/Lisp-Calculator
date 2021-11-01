@@ -135,6 +135,26 @@ func evalStmt(node ast.Stmt, env *Env) error {
 		env.Variables[stmtNode.Identifier] = result
 	case ast.FuncDefStmt:
 		env.Functions[stmtNode.Identifier] = stmtNode
+	case ast.WhileStmt:
+		cond, err := evalExpr(stmtNode.Condition, *env)
+		if err != nil {
+			return err
+		}
+		if cond.Kind != BoolType {
+			return errors.New("while loop cond type error")
+		}
+		for cond.Bool {
+			for _, ast := range stmtNode.Body {
+				Eval(ast, env)
+			}
+			cond, err = evalExpr(stmtNode.Condition, *env)
+			if err != nil {
+				return err
+			}
+			if cond.Kind != BoolType {
+				return errors.New("while loop cond type error")
+			}
+		}
 	default:
 		return fmt.Errorf("unknown statement type %T", node)
 	}

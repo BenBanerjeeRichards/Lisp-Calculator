@@ -186,4 +186,14 @@ func Run() {
 		 (- x y)
 	))`, -10)
 
+	ExpectNumber(`
+	(def sum 0)
+	(def x 5)
+	(while (> x 0)
+		(def sum (+ sum x))
+		(def x (- x 1))
+	)
+	(sum)`,
+		15)
+
 }
