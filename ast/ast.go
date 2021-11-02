@@ -61,6 +61,13 @@ type BoolExpr struct {
 	Value bool
 }
 
+type NullExpr struct {
+}
+
+type ListExpr struct {
+	Value []Expr
+}
+
 type IfElseExpr struct {
 	Condition  Expr
 	IfBranch   []Ast
@@ -86,6 +93,8 @@ func (BoolExpr) exprType()    {}
 func (IfElseExpr) exprType()  {}
 func (IfOnlyExpr) exprType()  {}
 func (StringExpr) exprType()  {}
+func (ListExpr) exprType()    {}
+func (NullExpr) exprType()    {}
 
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
@@ -217,6 +226,8 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 			return nil, AstError{Range: node.Range,
 				Simple: fmt.Sprintf("Failed to parse `%s` as bool", node.Data)}
 		}
+	case parser.NullNode:
+		return NullExpr{}, nil
 	case parser.LiteralNode:
 		return VarUseExpr{Identifier: node.Data}, nil
 	case parser.StringNode:
@@ -230,6 +241,8 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		if litNode, ok := safeTraverse(node, []int{0, 0}); ok {
 			if litNode.Data == "if" {
 				return constructor.createIfExpr(node)
+			} else if litNode.Data == "list" {
+				return constructor.createList(node)
 			} else if _, isFunc := constructor.FunctionNames[litNode.Data]; isFunc {
 				return constructor.createFuncAppExpr(node)
 			}
@@ -245,6 +258,18 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 	return nil, AstError{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
+}
+
+func (constructor *AstConstructor) createList(node parser.Node) (Expr, error) {
+	list := ListExpr{Value: make([]Expr, len(node.Children)-1)}
+	for i, valueNode := range node.Children[1:] {
+		valueExpr, err := constructor.createAstExpression(valueNode)
+		if err != nil {
+			return nil, err
+		}
+		list.Value[i] = valueExpr
+	}
+	return list, nil
 }
 
 func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, error) {

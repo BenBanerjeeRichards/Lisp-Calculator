@@ -6,6 +6,7 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/google/go-cmp/cmp"
 )
 
 func printTestFailedErr(code string, err error) {
@@ -20,6 +21,9 @@ func printTestFailedBool(code string, expected bool, actual bool) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
 func printTestFailedString(code string, expected string, actual string) {
+	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
+}
+func printTestFailedList(code string, expected []eval.Value, actual []eval.Value) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
 
@@ -65,6 +69,27 @@ func ExpectBool(code string, expected bool) bool {
 			printTestFailedBool(code, expected, evalResult.Bool)
 			return false
 		}
+	}
+	return true
+}
+
+func ExpectList(code string, expected []eval.Value) bool {
+	if evalResult, ok := evalProgram(code); ok {
+		if evalResult.Kind != eval.ListType {
+			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
+			return false
+		}
+		if len(evalResult.List) != len(expected) {
+			printTestFailedList(code, expected, evalResult.List)
+			return false
+		}
+		for i, actual := range evalResult.List {
+			if !cmp.Equal(actual, expected[i]) {
+				printTestFailedList(code, expected, evalResult.List)
+				return false
+			}
+		}
+
 	}
 	return true
 }
@@ -153,6 +178,16 @@ func Run() {
 	ExpectBool("(<= 10 5)", false)
 	ExpectBool("(= 10 10)", true)
 	ExpectBool("(= 10 7)", false)
+
+	ExpectList("(list 1 2 3)", []eval.Value{{Kind: eval.NumType, Num: 1},
+		{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}})
+	ExpectList("(list)", []eval.Value{})
+	ExpectList(`(list 1 false null "s")`, []eval.Value{{Kind: eval.NumType, Num: 1},
+		{Kind: eval.BoolType, Bool: false}, {Kind: eval.NullType}, {Kind: eval.StringType, String: "s"}})
+	ExpectList("(list 1 (list 2 3) null)", []eval.Value{{Kind: eval.NumType, Num: 1},
+		{Kind: eval.ListType, List: []eval.Value{{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}}}, {Kind: eval.NullType}})
+
+	ExpectNull("(null)")
 
 	ExpectNumber("(def x 10)(x)", 10)
 	ExpectNumber("(def x (+ 3 7))(x)", 10)

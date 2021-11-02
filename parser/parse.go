@@ -9,6 +9,7 @@ const (
 	NumberNode     = "NumberNode"
 	StringNode     = "StringNode"
 	BoolNode       = "BoolNode"
+	NullNode       = "NullNode"
 	LiteralNode    = "LiteralNode"
 	ExpressionNode = "ExpressionNode"
 	ProgramNode    = "ProgramNode"
@@ -34,6 +35,8 @@ func (node Node) Label() string {
 		return "Prog"
 	case NumberNode:
 		return node.Data
+	case NullNode:
+		return "null"
 	case StringNode:
 		return "\"" + node.Data + "\""
 	case BoolNode:
@@ -103,6 +106,8 @@ func (p *Parser) parseLiteral() (Node, error) {
 		p.nextToken()
 		if token.Data == "true" || token.Data == "false" {
 			return Node{Kind: BoolNode, Data: token.Data, Range: token.Range}, nil
+		} else if token.Data == "null" {
+			return Node{Kind: NullNode, Range: token.Range}, nil
 		}
 		return Node{Kind: LiteralNode, Data: token.Data, Range: token.Range}, nil
 	}

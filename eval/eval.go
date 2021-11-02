@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
@@ -35,7 +36,7 @@ type Value struct {
 	Num    float64
 	Bool   bool
 	String string
-	List   []interface{}
+	List   []Value
 }
 
 func (v *Value) NewNum(value float64) {
@@ -53,7 +54,7 @@ func (v *Value) NewBool(value bool) {
 	v.Bool = value
 }
 
-func (v *Value) NewList(value []interface{}) {
+func (v *Value) NewList(value []Value) {
 	v.Kind = ListType
 	v.List = value
 }
@@ -75,6 +76,17 @@ func (val Value) ToString() string {
 		return "false"
 	case NullType:
 		return "null"
+	case ListType:
+		var listStrBuilder strings.Builder
+		listStrBuilder.WriteString("(")
+		for i, item := range val.List {
+			listStrBuilder.WriteString(item.ToString())
+			if i != len(val.List)-1 {
+				listStrBuilder.WriteString(" ")
+			}
+		}
+		listStrBuilder.WriteString(")")
+		return listStrBuilder.String()
 	default:
 		return "Unknown type"
 	}
@@ -214,6 +226,20 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 	case ast.BoolExpr:
 		val := Value{}
 		val.NewBool(exprNode.Value)
+		return val, nil
+	case ast.NullExpr:
+		val := Value{}
+		val.NewNull()
+		return val, nil
+	case ast.ListExpr:
+		val := Value{Kind: ListType, List: make([]Value, len(exprNode.Value))}
+		for i, expr := range exprNode.Value {
+			itemValue, err := evalExpr(expr, env)
+			if err != nil {
+				return Value{}, err
+			}
+			val.List[i] = itemValue
+		}
 		return val, nil
 	case ast.VarUseExpr:
 		if val, ok := env.Variables[exprNode.Identifier]; ok {
