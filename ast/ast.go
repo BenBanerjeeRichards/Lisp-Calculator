@@ -54,6 +54,9 @@ type NumberExpr struct {
 	Value float64
 }
 
+type StringExpr struct {
+	Value string
+}
 type BoolExpr struct {
 	Value bool
 }
@@ -82,6 +85,7 @@ func (VarUseExpr) exprType()  {}
 func (BoolExpr) exprType()    {}
 func (IfElseExpr) exprType()  {}
 func (IfOnlyExpr) exprType()  {}
+func (StringExpr) exprType()  {}
 
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
@@ -127,6 +131,7 @@ func (constructor *AstConstructor) New() {
 	constructor.FunctionNames["<"] = true
 	constructor.FunctionNames["<="] = true
 	constructor.FunctionNames["="] = true
+	constructor.FunctionNames["print"] = true
 }
 
 func (constructor *AstConstructor) CreateAst(expr parser.Node) ([]Ast, error) {
@@ -214,6 +219,8 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		}
 	case parser.LiteralNode:
 		return VarUseExpr{Identifier: node.Data}, nil
+	case parser.StringNode:
+		return StringExpr{Value: node.Data}, nil
 	case parser.ExpressionNode:
 		if len(node.Children) == 0 {
 			return nil, AstError{Range: node.Range,

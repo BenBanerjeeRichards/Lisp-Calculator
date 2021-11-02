@@ -207,6 +207,10 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		val := Value{}
 		val.NewNum(exprNode.Value)
 		return val, nil
+	case ast.StringExpr:
+		val := Value{}
+		val.NewString(exprNode.Value)
+		return val, nil
 	case ast.BoolExpr:
 		val := Value{}
 		val.NewBool(exprNode.Value)
@@ -358,6 +362,18 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, errors.New("binary funtion add requires two parameters")
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 == f2 }, exprNode.Args[0], exprNode.Args[1], env)
+		case "print":
+			if len(exprNode.Args) != 1 {
+				return Value{}, errors.New("print requires parameter")
+			}
+			val, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return Value{}, err
+			}
+			fmt.Println(val.ToString())
+			ret := Value{}
+			ret.NewNull()
+			return ret, nil
 		default:
 			return Value{}, fmt.Errorf("unknown function %s", exprNode.Identifier)
 		}

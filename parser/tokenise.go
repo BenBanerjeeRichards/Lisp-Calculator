@@ -8,6 +8,7 @@ import (
 
 const (
 	TokNumber   = "TokNumber"
+	TokIdent    = "TokIdent"
 	TokString   = "TokString"
 	TokLBracket = "TokLBracket"
 	TokRBracket = "TokRBracket"
@@ -156,6 +157,24 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 		}
 		return Token{Kind: TokNumber, Data: number, Range: fRange}, true
 	}
+	if nextChar == '"' {
+		var stringLit strings.Builder
+		nextChar = t.nextChar()
+		for nextChar != '"' {
+			if nextChar == eof {
+				panic("TODO proper error handling") //FIXME
+			}
+			if nextChar == '\\' && t.Peek(1) == '"' {
+				stringLit.WriteByte('"')
+				t.nextChar()
+			} else {
+				stringLit.WriteByte(nextChar)
+			}
+			nextChar = t.nextChar()
+		}
+		t.nextChar()
+		return Token{Kind: TokString, Data: stringLit.String(), Range: FileRange{Start: start, End: t.currentPos()}}, true
+	}
 
 	// Now attempt to match an identifier
 	// Scan all non-whitespace characters and then test using regex
@@ -168,7 +187,7 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 	}
 	if identifierRegex.MatchString(identBuilder.String()) {
 		t.SeekAhead(i)
-		return Token{Kind: TokString, Data: identBuilder.String(),
+		return Token{Kind: TokIdent, Data: identBuilder.String(),
 			Range: FileRange{Start: start, End: t.currentPos()}}, true
 	}
 

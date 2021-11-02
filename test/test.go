@@ -19,6 +19,9 @@ func printTestFailedNum(code string, expected float64, actual float64) {
 func printTestFailedBool(code string, expected bool, actual bool) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
+func printTestFailedString(code string, expected string, actual string) {
+	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
+}
 
 func printTokensFailed(code string, message string, expected []parser.Token, actual []parser.Token) {
 	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
@@ -64,7 +67,20 @@ func ExpectBool(code string, expected bool) bool {
 		}
 	}
 	return true
+}
 
+func ExpectString(code string, expected string) bool {
+	if evalResult, ok := evalProgram(code); ok {
+		if evalResult.Kind != eval.StringType {
+			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
+			return false
+		}
+		if evalResult.String != expected {
+			printTestFailedString(code, expected, evalResult.String)
+			return false
+		}
+	}
+	return true
 }
 func ExpectNull(code string) bool {
 	if evalResult, ok := evalProgram(code); ok {
@@ -99,12 +115,14 @@ func mkToken(kind string, data string) parser.Token {
 }
 
 func Run() {
-	ExpectTokens("(x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokString, "x"),
+	ExpectTokens("(x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "x"),
 		mkToken(parser.TokRBracket, "")})
 	ExpectTokens("(5)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokNumber, "5"),
 		mkToken(parser.TokRBracket, "")})
-	ExpectTokens("(hello", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokString, "hello")})
-	ExpectTokens("+", []parser.Token{mkToken(parser.TokString, "+")})
+	ExpectTokens("(hello", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "hello")})
+	ExpectTokens("+", []parser.Token{mkToken(parser.TokIdent, "+")})
+	ExpectTokens(`"te"`, []parser.Token{mkToken(parser.TokString, "te")})
+	ExpectTokens(`"hello \" world"`, []parser.Token{mkToken(parser.TokString, "hello \" world")})
 
 	ExpectNumber("(5)", 5)
 	ExpectNumber("(5.5)", 5.5)
@@ -116,6 +134,8 @@ func Run() {
 	ExpectNumber("(+ 5 (+ 3 6))", 14)
 	ExpectNumber("(+ (+ 10 20) (+ 3 6))", 39)
 	ExpectNumber("(+ (+ 10 20) 100)", 130)
+
+	ExpectString(`("Hello World")`, "Hello World")
 
 	ExpectBool("(true)", true)
 	ExpectBool("(false)", false)

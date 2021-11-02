@@ -7,6 +7,7 @@ import (
 
 const (
 	NumberNode     = "NumberNode"
+	StringNode     = "StringNode"
 	BoolNode       = "BoolNode"
 	LiteralNode    = "LiteralNode"
 	ExpressionNode = "ExpressionNode"
@@ -33,6 +34,8 @@ func (node Node) Label() string {
 		return "Prog"
 	case NumberNode:
 		return node.Data
+	case StringNode:
+		return "\"" + node.Data + "\""
 	case BoolNode:
 		return node.Data
 	case LiteralNode:
@@ -79,12 +82,24 @@ func (p *Parser) parserNumber() (Node, error) {
 	return Node{}, errors.New("not a number")
 }
 
+func (p *Parser) parseString() (Node, error) {
+	token, err := p.currentToken()
+	if err != nil {
+		return Node{}, err
+	}
+	if token.Kind == TokString {
+		p.nextToken()
+		return Node{Kind: StringNode, Data: token.Data, Range: token.Range}, nil
+	}
+	return Node{}, errors.New("not a string")
+}
+
 func (p *Parser) parseLiteral() (Node, error) {
 	token, err := p.currentToken()
 	if err != nil {
 		return Node{}, err
 	}
-	if token.Kind == "TokString" {
+	if token.Kind == TokIdent {
 		p.nextToken()
 		if token.Data == "true" || token.Data == "false" {
 			return Node{Kind: BoolNode, Data: token.Data, Range: token.Range}, nil
@@ -99,6 +114,11 @@ func (p *Parser) ParseExpression() (Node, error) {
 	if err == nil {
 		return Node{Kind: ExpressionNode, Children: []Node{numNode}, Range: numNode.Range}, nil
 	}
+	strNode, err := p.parseString()
+	if err == nil {
+		return Node{Kind: ExpressionNode, Children: []Node{strNode}, Range: strNode.Range}, nil
+	}
+
 	litNode, err := p.parseLiteral()
 	if err == nil {
 		return Node{Kind: ExpressionNode, Children: []Node{litNode}, Range: litNode.Range}, nil
