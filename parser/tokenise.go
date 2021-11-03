@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
 const (
@@ -19,30 +21,10 @@ var asciiSpace = [256]uint8{'\t': 1, '\n': 1, '\v': 1, '\f': 1, '\r': 1, ' ': 1}
 var eof uint8 = 0xFF
 var identifierRegex, _ = regexp.Compile(`^[^0-9\s()][^()\s]*$`)
 
-type FilePos struct {
-	Line     int
-	Col      int
-	Position int
-}
-
-func (f FilePos) String() string {
-	return fmt.Sprintf("%d:%d", f.Line, f.Col)
-}
-
-// Range in a file from Start (inclusive) to End (Exclusive)
-type FileRange struct {
-	Start FilePos
-	End   FilePos
-}
-
-func (f FileRange) String() string {
-	return fmt.Sprintf("%s-%s", f.Start, f.End)
-}
-
 type Token struct {
 	Kind  string
 	Data  string
-	Range FileRange
+	Range types.FileRange
 }
 
 func (t Token) String() string {
@@ -95,8 +77,8 @@ func (t *Tokeniser) consumeSpaces() {
 	}
 }
 
-func (t Tokeniser) currentPos() FilePos {
-	return FilePos{Line: t.line, Col: t.col, Position: t.index}
+func (t Tokeniser) currentPos() types.FilePos {
+	return types.FilePos{Line: t.line, Col: t.col, Position: t.index}
 }
 
 func (t Tokeniser) Current() uint8 {
@@ -122,14 +104,14 @@ func (t *Tokeniser) SeekAhead(amount int) {
 	t.index += amount
 }
 
-func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, FileRange) {
+func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, types.FileRange) {
 	start := t.currentPos()
 	acc := ""
 	for !t.isEOF() && condition(t.Current()) {
 		acc += string(t.Current())
 		t.nextChar()
 	}
-	return acc, FileRange{Start: start, End: t.currentPos()}
+	return acc, types.FileRange{Start: start, End: t.currentPos()}
 }
 
 func (t *Tokeniser) nextToken() (Token, bool) {
@@ -138,11 +120,11 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 	start := t.currentPos()
 	if nextChar == '(' {
 		t.nextChar()
-		return Token{Kind: TokLBracket, Range: FileRange{Start: start, End: t.currentPos()}}, true
+		return Token{Kind: TokLBracket, Range: types.FileRange{Start: start, End: t.currentPos()}}, true
 	}
 	if nextChar == ')' {
 		t.nextChar()
-		return Token{Kind: TokRBracket, Range: FileRange{Start: start, End: t.currentPos()}}, true
+		return Token{Kind: TokRBracket, Range: types.FileRange{Start: start, End: t.currentPos()}}, true
 	}
 	// TODO should improve this, probably just use regexp
 	if isDigit(nextChar) || (nextChar == '-' && isDigit(t.Peek(1))) {
@@ -173,7 +155,7 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 			nextChar = t.nextChar()
 		}
 		t.nextChar()
-		return Token{Kind: TokString, Data: stringLit.String(), Range: FileRange{Start: start, End: t.currentPos()}}, true
+		return Token{Kind: TokString, Data: stringLit.String(), Range: types.FileRange{Start: start, End: t.currentPos()}}, true
 	}
 
 	// Now attempt to match an identifier
@@ -188,7 +170,7 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 	if identifierRegex.MatchString(identBuilder.String()) {
 		t.SeekAhead(i)
 		return Token{Kind: TokIdent, Data: identBuilder.String(),
-			Range: FileRange{Start: start, End: t.currentPos()}}, true
+			Range: types.FileRange{Start: start, End: t.currentPos()}}, true
 	}
 
 	if t.isEOF() {

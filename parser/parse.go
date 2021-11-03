@@ -3,6 +3,8 @@ package parser
 import (
 	"errors"
 	"fmt"
+
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
 const (
@@ -23,7 +25,7 @@ type Parser struct {
 type Node struct {
 	Kind     string
 	Data     string
-	Range    FileRange
+	Range    types.FileRange
 	Children []Node
 }
 
@@ -150,7 +152,7 @@ func (p *Parser) ParseExpression() (Node, error) {
 		return Node{}, nil
 	}
 	p.nextToken()
-	return Node{Kind: ExpressionNode, Children: childExpressions, Range: FileRange{Start: rangeStart.End, End: rangeEnd.End}}, nil
+	return Node{Kind: ExpressionNode, Children: childExpressions, Range: types.FileRange{Start: rangeStart.End, End: rangeEnd.End}}, nil
 }
 
 func (p *Parser) ParseProgram() (Node, error) {
@@ -159,12 +161,12 @@ func (p *Parser) ParseProgram() (Node, error) {
 		expr, err := p.ParseExpression()
 		if err != nil {
 			if p.isEndOfInput() {
-				eRange := FileRange{}
+				eRange := types.FileRange{}
 				if len(expressions) == 0 {
-					zeroPos := FilePos{Line: 0, Col: 0, Position: 0}
-					eRange = FileRange{Start: zeroPos, End: zeroPos}
+					zeroPos := types.FilePos{Line: 0, Col: 0, Position: 0}
+					eRange = types.FileRange{Start: zeroPos, End: zeroPos}
 				} else {
-					eRange = FileRange{Start: expressions[0].Range.Start, End: expressions[len(expressions)-1].Range.End}
+					eRange = types.FileRange{Start: expressions[0].Range.Start, End: expressions[len(expressions)-1].Range.End}
 				}
 				prog := Node{Kind: ProgramNode, Children: expressions, Range: eRange}
 				return prog, nil

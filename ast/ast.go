@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
 // AST node structure based on that used in the go compiler
@@ -99,16 +100,6 @@ func (NullExpr) exprType()    {}
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
 func (WhileStmt) stmtType()   {}
-
-type AstError struct {
-	Range  parser.FileRange
-	Simple string
-	Detail string
-}
-
-func (a AstError) Error() string {
-	return fmt.Sprintf("[%d:%d-%d:%d]: %s (%s)", a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
-}
 
 func (ast *Ast) newStatement(stmt Stmt) {
 	ast.Kind = StmtType
@@ -213,7 +204,7 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 	case parser.NumberNode:
 		f, err := strconv.ParseFloat(node.Data, 64)
 		if err != nil {
-			return nil, AstError{Range: node.Range,
+			return nil, types.Error{Range: node.Range,
 				Simple: fmt.Sprintf("Failed to parse `%s` as float", node.Data)}
 		}
 		return NumberExpr{Value: f}, nil
@@ -223,7 +214,7 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		} else if node.Data == "false" {
 			return BoolExpr{Value: false}, nil
 		} else {
-			return nil, AstError{Range: node.Range,
+			return nil, types.Error{Range: node.Range,
 				Simple: fmt.Sprintf("Failed to parse `%s` as bool", node.Data)}
 		}
 	case parser.NullNode:
@@ -234,7 +225,7 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		return StringExpr{Value: node.Data}, nil
 	case parser.ExpressionNode:
 		if len(node.Children) == 0 {
-			return nil, AstError{Range: node.Range,
+			return nil, types.Error{Range: node.Range,
 				Simple: "Parse error",
 				Detail: "Expression must have non-zero children"}
 		}
@@ -250,12 +241,12 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		if len(node.Children) == 1 {
 			return constructor.createAstExpression(node.Children[0])
 		} else {
-			return nil, AstError{Simple: "Parse Error",
+			return nil, types.Error{Simple: "Parse Error",
 				Detail: fmt.Sprintf("unexpected node kind %s with %d children", node.Kind, len(node.Children)),
 				Range:  node.Range}
 		}
 	}
-	return nil, AstError{Simple: "Parse Error",
+	return nil, types.Error{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
 }
@@ -274,7 +265,7 @@ func (constructor *AstConstructor) createList(node parser.Node) (Expr, error) {
 
 func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, error) {
 	if len(node.Children) < 3 {
-		return nil, AstError{Range: node.Range,
+		return nil, types.Error{Range: node.Range,
 			Simple: "Syntax error for while",
 			Detail: fmt.Sprintf("Expected >= 3 children for while, got %d", len(node.Children)),
 		}
@@ -287,7 +278,7 @@ func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, erro
 	for _, expr := range node.Children[2:] {
 		exprAst, err := constructor.CreateExpressionAst(expr)
 		if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
-			return nil, AstError{Range: expr.Range, Simple: "Syntax error", Detail: "While requires body to be contained in expression"}
+			return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "While requires body to be contained in expression"}
 		}
 		if err != nil {
 			return nil, err
@@ -300,7 +291,7 @@ func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, erro
 
 func (constructor *AstConstructor) createIfExpr(node parser.Node) (Expr, error) {
 	if len(node.Children) != 4 && len(node.Children) != 3 {
-		return nil, AstError{Range: node.Range,
+		return nil, types.Error{Range: node.Range,
 			Simple: "Syntax error for if-else",
 			Detail: fmt.Sprintf("Expected 3 or 5 children for if, got %d", len(node.Children)),
 		}
@@ -345,7 +336,7 @@ func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, er
 		for i, argNode := range node.Children[1:] {
 			argExpr, err := constructor.createAstExpression(argNode)
 			if err != nil {
-				return nil, AstError{
+				return nil, types.Error{
 					Simple: "Function application expression must an expression",
 					Range:  argNode.Range}
 			}
@@ -353,31 +344,31 @@ func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, er
 		}
 		return appExpr, nil
 	}
-	return nil, AstError{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
+	return nil, types.Error{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
 }
 
 func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, error) {
 	ok, literal := nestedLiteralValue(node)
 	if !ok {
-		return nil, AstError{
+		return nil, types.Error{
 			Simple: "Parse error",
 			Detail: "could not find nested literal",
 			Range:  node.Range}
 	}
 	if literal == "def" {
 		if len(node.Children) != 3 {
-			return nil, AstError{
+			return nil, types.Error{
 				Simple: "Syntax error - variable declaration should take form (def <name> <value>)",
 				Detail: fmt.Sprintf("invalid variable declaration syntax - expected 3 expression children, got %d", len(node.Children)),
 				Range:  node.Range,
 			}
 		}
 		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
-			return nil, AstError{Simple: "Parse error - variable name must be literal", Range: node.Children[1].Range}
+			return nil, types.Error{Simple: "Parse error - variable name must be literal", Range: node.Children[1].Range}
 		}
 		varValue, err := constructor.createAstExpression(node.Children[2])
 		if err != nil {
-			return nil, AstError{Simple: "Invalid variable assignment - variable assigned to statement",
+			return nil, types.Error{Simple: "Invalid variable assignment - variable assigned to statement",
 				Detail: err.Error(),
 				Range:  node.Children[2].Range}
 		}
@@ -385,14 +376,14 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 	} else if literal == "defun" {
 		// (defun identifier (args) definition)
 		if len(node.Children) < 4 {
-			return nil, AstError{
+			return nil, types.Error{
 				Simple: "Syntax error - function declaration should take form (defun <name> <args> <body>)",
 				Detail: fmt.Sprintf("invalid function declaration syntax - expected 4  children, got %d", len(node.Children)),
 				Range:  node.Range,
 			}
 		}
 		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
-			return nil, AstError{
+			return nil, types.Error{
 				Simple: "Invalid function declaration - name must be a literal",
 				Range:  node.Children[1].Range,
 			}
@@ -400,7 +391,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 
 		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0)}
 		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok {
-			return nil, AstError{
+			return nil, types.Error{
 				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefExpr.Identifier),
 				Range:  node.Range,
 			}
@@ -410,7 +401,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 		argNode := node.Children[2]
 		for _, argExpr := range argNode.Children {
 			if len(argExpr.Children) != 1 || argExpr.Children[0].Kind != parser.LiteralNode {
-				return nil, AstError{
+				return nil, types.Error{
 					Simple: "Bad function argument - expected identifier",
 					Range:  argExpr.Range,
 				}
@@ -424,7 +415,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 		for _, expr := range node.Children[3:] {
 			exprAst, err := constructor.CreateExpressionAst(expr)
 			if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
-				return nil, AstError{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
+				return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
 			}
 			if err != nil {
 				return nil, err
@@ -436,7 +427,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 	} else if literal == "while" {
 		return constructor.createWhileLoop(node)
 	}
-	return nil, AstError{
+	return nil, types.Error{
 		Simple: "Parse error",
 		Detail: fmt.Sprintf("Failed to process node - %s", node.Kind),
 		Range:  node.Range,

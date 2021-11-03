@@ -7,9 +7,10 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
-func AnnotateError(code string, error ast.AstError) string {
+func AnnotateError(code string, error types.Error) string {
 	// reset := "\033[0m"
 	// bold := "\033[1m"
 	// red := "\031[1m"
