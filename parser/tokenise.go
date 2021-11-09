@@ -38,10 +38,6 @@ func isDigit(c uint8) bool {
 	return (c >= 48 && c <= 57) || c == '.'
 }
 
-func isIdentifierChar(c uint8) bool {
-	return ((c >= '!' && c <= '/') || (c >= ':' && c < eof)) && (c != '(' && c != ')')
-}
-
 type Tokeniser struct {
 	input string
 	index int

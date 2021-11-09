@@ -14,10 +14,12 @@ import (
 
 type Expr interface {
 	exprType()
+	GetRange() types.FileRange
 }
 
 type Stmt interface {
 	stmtType()
+	GetRange() types.FileRange
 }
 
 const (
@@ -34,55 +36,115 @@ type Ast struct {
 type VarDefStmt struct {
 	Identifier string
 	Value      Expr
+	Range      types.FileRange
 }
 
 type FuncDefStmt struct {
 	Identifier string
 	Args       []string
 	Body       []Ast
+	Range      types.FileRange
 }
 
 type VarUseExpr struct {
 	Identifier string
+	Range      types.FileRange
 }
 
 type FuncAppExpr struct {
 	Identifier string
 	Args       []Expr
+	Range      types.FileRange
 }
 
 type NumberExpr struct {
 	Value float64
+	Range types.FileRange
 }
 
 type StringExpr struct {
 	Value string
+	Range types.FileRange
 }
 type BoolExpr struct {
 	Value bool
+	Range types.FileRange
 }
 
 type NullExpr struct {
+	Range types.FileRange
 }
 
 type ListExpr struct {
 	Value []Expr
+	Range types.FileRange
 }
 
 type IfElseExpr struct {
 	Condition  Expr
 	IfBranch   []Ast
 	ElseBranch []Ast
+	Range      types.FileRange
 }
 
 type IfOnlyExpr struct {
 	Condition Expr
 	IfBranch  []Ast
+	Range     types.FileRange
 }
 
 type WhileStmt struct {
 	Condition Expr
 	Body      []Ast
+	Range     types.FileRange
+}
+
+func (v VarDefStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v FuncDefStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v VarUseExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v FuncAppExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v NumberExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v StringExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v BoolExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v NullExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v ListExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v IfElseExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v IfOnlyExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v WhileStmt) GetRange() types.FileRange {
+	return v.Range
 }
 
 // These are just to prevent assigning a statement to an expression
@@ -207,22 +269,22 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 			return nil, types.Error{Range: node.Range,
 				Simple: fmt.Sprintf("Failed to parse `%s` as float", node.Data)}
 		}
-		return NumberExpr{Value: f}, nil
+		return NumberExpr{Value: f, Range: node.Range}, nil
 	case parser.BoolNode:
 		if node.Data == "true" {
-			return BoolExpr{Value: true}, nil
+			return BoolExpr{Value: true, Range: node.Range}, nil
 		} else if node.Data == "false" {
-			return BoolExpr{Value: false}, nil
+			return BoolExpr{Value: false, Range: node.Range}, nil
 		} else {
 			return nil, types.Error{Range: node.Range,
 				Simple: fmt.Sprintf("Failed to parse `%s` as bool", node.Data)}
 		}
 	case parser.NullNode:
-		return NullExpr{}, nil
+		return NullExpr{Range: node.Range}, nil
 	case parser.LiteralNode:
-		return VarUseExpr{Identifier: node.Data}, nil
+		return VarUseExpr{Identifier: node.Data, Range: node.Range}, nil
 	case parser.StringNode:
-		return StringExpr{Value: node.Data}, nil
+		return StringExpr{Value: node.Data, Range: node.Range}, nil
 	case parser.ExpressionNode:
 		if len(node.Children) == 0 {
 			return nil, types.Error{Range: node.Range,
@@ -252,7 +314,7 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 }
 
 func (constructor *AstConstructor) createList(node parser.Node) (Expr, error) {
-	list := ListExpr{Value: make([]Expr, len(node.Children)-1)}
+	list := ListExpr{Value: make([]Expr, len(node.Children)-1), Range: node.Range}
 	for i, valueNode := range node.Children[1:] {
 		valueExpr, err := constructor.createAstExpression(valueNode)
 		if err != nil {
@@ -274,7 +336,7 @@ func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, erro
 	if err != nil {
 		return nil, err
 	}
-	whileStmt := WhileStmt{Condition: cond, Body: make([]Ast, 0)}
+	whileStmt := WhileStmt{Condition: cond, Body: make([]Ast, 0), Range: node.Range}
 	for _, expr := range node.Children[2:] {
 		exprAst, err := constructor.CreateExpressionAst(expr)
 		if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
@@ -310,9 +372,9 @@ func (constructor *AstConstructor) createIfExpr(node parser.Node) (Expr, error) 
 		if err != nil {
 			return nil, err
 		}
-		return IfElseExpr{Condition: cond, IfBranch: ifBranch, ElseBranch: elseBranch}, nil
+		return IfElseExpr{Condition: cond, IfBranch: ifBranch, ElseBranch: elseBranch, Range: node.Range}, nil
 	} else {
-		return IfOnlyExpr{Condition: cond, IfBranch: ifBranch}, nil
+		return IfOnlyExpr{Condition: cond, IfBranch: ifBranch, Range: node.Range}, nil
 	}
 }
 
@@ -332,7 +394,7 @@ func (constructor *AstConstructor) createBody(node parser.Node) ([]Ast, error) {
 func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, error) {
 	funcNameExpr, err := singleNestedExpr(node.Children[0])
 	if err == nil && funcNameExpr.Kind == parser.LiteralNode {
-		appExpr := FuncAppExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1)}
+		appExpr := FuncAppExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1), Range: node.Range}
 		for i, argNode := range node.Children[1:] {
 			argExpr, err := constructor.createAstExpression(argNode)
 			if err != nil {
@@ -372,7 +434,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 				Detail: err.Error(),
 				Range:  node.Children[2].Range}
 		}
-		return VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue}, nil
+		return VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
 	} else if literal == "defun" {
 		// (defun identifier (args) definition)
 		if len(node.Children) < 4 {
@@ -389,7 +451,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 			}
 		}
 
-		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0)}
+		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
 		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok {
 			return nil, types.Error{
 				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefExpr.Identifier),

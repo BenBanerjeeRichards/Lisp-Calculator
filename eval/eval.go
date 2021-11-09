@@ -10,6 +10,7 @@ import (
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 	"github.com/benbanerjeerichards/lisp-calculator/util"
 )
 
@@ -153,7 +154,8 @@ func evalStmt(node ast.Stmt, env *Env) error {
 			return err
 		}
 		if cond.Kind != BoolType {
-			return errors.New("while loop cond type error")
+			return types.Error{Range: stmtNode.Condition.GetRange(),
+				Simple: fmt.Sprintf("Type Error - while loop condition is not a boolean (got %s)", cond.Kind)}
 		}
 		for cond.Bool {
 			for _, ast := range stmtNode.Body {
@@ -164,7 +166,8 @@ func evalStmt(node ast.Stmt, env *Env) error {
 				return err
 			}
 			if cond.Kind != BoolType {
-				return errors.New("while loop cond type error")
+				return types.Error{Range: stmtNode.Condition.GetRange(),
+					Simple: fmt.Sprintf("Type Error - while loop condition is not a boolean (got %s)", cond.Kind)}
 			}
 		}
 	default:
@@ -183,10 +186,13 @@ func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Exp
 		return Value{}, err
 	}
 	if lhsValue.Kind != NumType {
-		return Value{}, errors.New("type error for lhs to binary op")
+		return Value{}, types.Error{Range: lhs.GetRange(),
+			Simple: fmt.Sprintf("Type Error - LHS expected number (got %s)", lhsValue.Kind)}
+
 	}
 	if rhsValue.Kind != NumType {
-		return Value{}, errors.New("type error for rhs to binary op")
+		return Value{}, types.Error{Range: rhs.GetRange(),
+			Simple: fmt.Sprintf("Type Error - RHS expected number (got %s)", rhsValue.Kind)}
 	}
 	val := Value{}
 	val.NewNum(f(lhsValue.Num, rhsValue.Num))
@@ -203,10 +209,12 @@ func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.E
 		return Value{}, err
 	}
 	if lhsValue.Kind != NumType {
-		return Value{}, errors.New("type error for lhs to binary op")
+		return Value{}, types.Error{Range: rhs.GetRange(),
+			Simple: fmt.Sprintf("Type Error - LHS  expected number (got %s)", lhsValue.Kind)}
 	}
 	if rhsValue.Kind != NumType {
-		return Value{}, errors.New("type error for rhs to binary op")
+		return Value{}, types.Error{Range: rhs.GetRange(),
+			Simple: fmt.Sprintf("Type Error - RHS expected number (got %s)", rhsValue.Kind)}
 	}
 	val := Value{}
 	val.NewBool(f(lhsValue.Num, rhsValue.Num))
@@ -245,7 +253,8 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		if val, ok := env.Variables[exprNode.Identifier]; ok {
 			return val, nil
 		} else {
-			return Value{}, fmt.Errorf("undeclared variable %s", exprNode.Identifier)
+			return Value{}, types.Error{Range: exprNode.Range,
+				Simple: fmt.Sprintf("Undeclared variable %s", exprNode.Identifier)}
 		}
 	case ast.IfElseExpr:
 		condRes, err := evalExpr(exprNode.Condition, env)
@@ -253,7 +262,8 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			return Value{}, err
 		}
 		if condRes.Kind != BoolType {
-			return Value{}, errors.New("bad type for ifelse condition")
+			return Value{}, types.Error{Range: exprNode.Condition.GetRange(),
+				Simple: fmt.Sprintf("Type error - expected boolean for IfElse condition (got %s)", condRes.Kind)}
 		}
 		branch := exprNode.IfBranch
 		if !condRes.Bool {
@@ -274,7 +284,8 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			return Value{}, err
 		}
 		if condRes.Kind != BoolType {
-			return Value{}, errors.New("bad type for ifelse condition")
+			return Value{}, types.Error{Range: exprNode.Condition.GetRange(),
+				Simple: fmt.Sprintf("Type error - expected boolean for If condition (got %s)", condRes.Kind)}
 		}
 		if !condRes.Bool {
 			val := Value{}
@@ -294,7 +305,8 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		// First look up in function defintions, then try builtins
 		if funcDef, ok := env.Functions[exprNode.Identifier]; ok {
 			if len(funcDef.Args) != len(exprNode.Args) {
-				return Value{}, fmt.Errorf("bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))}
 			}
 			funcAppEnv := Env{}
 			funcAppEnv.New()
@@ -303,7 +315,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				argExpr := exprNode.Args[i]
 				argEvalValue, err := evalExpr(argExpr, env)
 				if err != nil {
-					return Value{}, fmt.Errorf("failed to eval argument %d - %v", i+1, err)
+					return Value{}, err
 				}
 
 				funcAppEnv.Variables[argName] = argEvalValue
@@ -321,76 +333,90 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		switch exprNode.Identifier {
 		case "+":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "-":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "*":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "/":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "^":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, exprNode.Args[0], exprNode.Args[1], env)
 		case "log":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, exprNode.Args[0], exprNode.Args[1], env)
 		case "sqrt":
 			if len(exprNode.Args) != 1 {
-				return Value{}, errors.New("unary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(exprNode.Args))}
 			}
 			sqrtOf, err := evalExpr(exprNode.Args[0], env)
 			if err != nil {
 				return Value{}, err
 			}
 			if sqrtOf.Kind != NumType {
-				return Value{}, errors.New("type error for arg to sqrt")
+				return Value{}, types.Error{Range: exprNode.Args[0].GetRange(),
+					Simple: fmt.Sprintf("Type error - expected number (got %s)", sqrtOf.Kind)}
 			}
 			val := Value{}
 			val.NewNum(math.Sqrt(sqrtOf.Num))
 			return val, nil
 		case ">":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case ">=":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "<":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "<=":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "=":
 			if len(exprNode.Args) != 2 {
-				return Value{}, errors.New("binary funtion add requires two parameters")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
 			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 == f2 }, exprNode.Args[0], exprNode.Args[1], env)
 		case "print":
 			if len(exprNode.Args) != 1 {
-				return Value{}, errors.New("print requires parameter")
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(exprNode.Args))}
 			}
 			val, err := evalExpr(exprNode.Args[0], env)
 			if err != nil {
@@ -401,11 +427,8 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			ret.NewNull()
 			return ret, nil
 		default:
-			return Value{}, fmt.Errorf("unknown function %s", exprNode.Identifier)
+			return Value{}, types.Error{Simple: fmt.Sprintf("Unknown function %s", exprNode.Identifier), Range: exprNode.GetRange()}
 		}
-
-	default:
-		return Value{}, fmt.Errorf("unknown expression %v", node)
 	}
 	return Value{}, errors.New("?")
 }
