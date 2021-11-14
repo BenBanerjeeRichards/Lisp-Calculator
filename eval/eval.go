@@ -25,19 +25,27 @@ func (env *Env) New() {
 }
 
 const (
-	NumType    = "num"
-	BoolType   = "bool"
-	StringType = "string"
-	NullType   = "null"
-	ListType   = "list"
+	NumType     = "num"
+	BoolType    = "bool"
+	StringType  = "string"
+	NullType    = "null"
+	ListType    = "list"
+	ClosureType = "closure"
 )
 
+type ClosureValue struct {
+	ClosureEnv Env
+	Args       []string
+	Body       []ast.Ast
+}
+
 type Value struct {
-	Kind   string
-	Num    float64
-	Bool   bool
-	String string
-	List   []Value
+	Kind    string
+	Num     float64
+	Bool    bool
+	String  string
+	List    []Value
+	Closure ClosureValue
 }
 
 func (v *Value) NewNum(value float64) {
@@ -61,6 +69,10 @@ func (v *Value) NewList(value []Value) {
 }
 func (v *Value) NewNull() {
 	v.Kind = NullType
+}
+func (v *Value) NewClosure(args []string, body []ast.Ast, env Env) {
+	v.Kind = ClosureType
+	v.Closure = ClosureValue{Args: args, Body: body, ClosureEnv: env}
 }
 
 // Cant use Stringer interface due to name conflict
@@ -88,6 +100,15 @@ func (val Value) ToString() string {
 		}
 		listStrBuilder.WriteString(")")
 		return listStrBuilder.String()
+	case ClosureType:
+		var argString strings.Builder
+		for i, arg := range val.Closure.Args {
+			argString.WriteString(arg)
+			if i != len(val.Closure.Args)-1 {
+				argString.WriteString(" ")
+			}
+		}
+		return fmt.Sprintf("lambda(%s)", argString.String())
 	default:
 		return "Unknown type"
 	}
@@ -301,7 +322,33 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return evalResult, nil
 			}
 		}
-	case ast.FuncAppExpr:
+	case ast.ClosureDefExpr:
+		// Return value of closure with captured env
+		value := Value{}
+		closureEnv := Env{}
+		closureEnv.New()
+		for funcName, f := range env.Functions {
+			closureEnv.Functions[funcName] = f
+		}
+		for varName, v := range env.Variables {
+			closureEnv.Variables[varName] = v
+		}
+		value.NewClosure(exprNode.Args, exprNode.Body, closureEnv)
+		return value, nil
+	case ast.ClosureApplicationExpr:
+		closureVal, err := evalExpr(exprNode.Closure, env)
+		if err != nil {
+			return Value{}, err
+		}
+		if closureVal.Kind != ClosureType {
+			return Value{}, types.Error{Range: exprNode.Range, Simple: fmt.Sprintf("Can not apply arguments to type %s (expected closure)", closureVal.Kind)}
+		}
+		closure := closureVal.Closure
+		if len(closure.Args) != len(exprNode.Args) {
+			return Value{}, types.Error{Range: exprNode.Range, Simple: fmt.Sprintf("Expected %d arguments to closure applicatoin, got %d", len(closure.Args), len(exprNode.Args))}
+		}
+		return evalClosure(closure, exprNode.Args, env, exprNode.Range)
+	case ast.FunctionApplicationExpr:
 		// First look up in function defintions, then try builtins
 		if funcDef, ok := env.Functions[exprNode.Identifier]; ok {
 			if len(funcDef.Args) != len(exprNode.Args) {
@@ -329,7 +376,18 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 					return evalResult, nil
 				}
 			}
+		} else {
+			// Try to look up variable instead
+			if val, ok := env.Variables[exprNode.Identifier]; ok {
+				if len(exprNode.Args) == 0 {
+					return val, nil
+				} else if val.Kind == ClosureType {
+					return evalClosure(val.Closure, exprNode.Args, env, exprNode.Range)
+				}
+			}
 		}
+
+		// Check for closure application
 		switch exprNode.Identifier {
 		case "+":
 			if len(exprNode.Args) != 2 {
@@ -412,7 +470,20 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 == f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			lhsVal, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return Value{}, nil
+			}
+			rhsVal, err := evalExpr(exprNode.Args[1], env)
+			if err != nil {
+				return Value{}, nil
+			}
+			if lhsVal.Kind != rhsVal.Kind {
+				return Value{}, types.Error{Range: exprNode.Range, Simple: "Operand types to = are different"}
+			}
+			val := Value{}
+			val.NewBool(lhsVal.Equals(rhsVal))
+			return val, nil
 		case "print":
 			if len(exprNode.Args) != 1 {
 				return Value{}, types.Error{Range: exprNode.Range,
@@ -431,6 +502,72 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		}
 	}
 	return Value{}, errors.New("?")
+}
+
+func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types.FileRange) (Value, error) {
+	// Closure method application
+	if len(closureDef.Args) != len(args) {
+		return Value{}, types.Error{Range: cRange,
+			Simple: fmt.Sprintf("Expected %d arguments to closure application, got %d", len(closureDef.Args), len(args))}
+	}
+	// Construct closure environment, which is based on environment when closure was declared (the captured scope)
+	closureEnv := closureDef.ClosureEnv
+
+	for funcName, f := range env.Functions {
+		if _, ok := closureEnv.Functions[funcName]; !ok {
+			closureEnv.Functions[funcName] = f
+		}
+	}
+	for varName, v := range env.Variables {
+		if _, ok := closureEnv.Variables[varName]; !ok {
+			closureEnv.Variables[varName] = v
+		}
+	}
+	for i, argName := range closureDef.Args {
+		argExpr := args[i]
+		argEvalValue, err := evalExpr(argExpr, env)
+		if err != nil {
+			return Value{}, err
+		}
+		closureEnv.Variables[argName] = argEvalValue
+	}
+	for i, closureAst := range closureDef.Body {
+		evalResult, err := Eval(closureAst, &closureEnv)
+		if err != nil {
+			return Value{}, err
+		}
+		if i == len(closureDef.Body)-1 {
+			return evalResult, nil
+		}
+	}
+	return Value{}, errors.New("??")
+}
+
+func (a Value) Equals(b Value) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case NumType:
+		return a.Num == b.Num
+	case StringType:
+		return a.String == b.String
+	case BoolType:
+		return a.Bool == b.Bool
+	case NullType:
+		return true
+	case ListType:
+		if len(a.List) != len(b.List) {
+			return false
+		}
+		for i := range a.List {
+			if !a.List[i].Equals(b.List[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func RunRepl() {

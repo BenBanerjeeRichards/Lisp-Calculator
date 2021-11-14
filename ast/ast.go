@@ -51,10 +51,22 @@ type VarUseExpr struct {
 	Range      types.FileRange
 }
 
-type FuncAppExpr struct {
+type FunctionApplicationExpr struct {
 	Identifier string
 	Args       []Expr
 	Range      types.FileRange
+}
+
+type ClosureApplicationExpr struct {
+	Closure Expr
+	Args    []Expr
+	Range   types.FileRange
+}
+
+type ClosureDefExpr struct {
+	Args  []string
+	Body  []Ast
+	Range types.FileRange
 }
 
 type NumberExpr struct {
@@ -111,7 +123,7 @@ func (v VarUseExpr) GetRange() types.FileRange {
 	return v.Range
 }
 
-func (v FuncAppExpr) GetRange() types.FileRange {
+func (v FunctionApplicationExpr) GetRange() types.FileRange {
 	return v.Range
 }
 
@@ -147,17 +159,27 @@ func (v WhileStmt) GetRange() types.FileRange {
 	return v.Range
 }
 
+func (v ClosureDefExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v ClosureApplicationExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
 // These are just to prevent assigning a statement to an expression
 // Same as what go compiler does
-func (FuncAppExpr) exprType() {}
-func (NumberExpr) exprType()  {}
-func (VarUseExpr) exprType()  {}
-func (BoolExpr) exprType()    {}
-func (IfElseExpr) exprType()  {}
-func (IfOnlyExpr) exprType()  {}
-func (StringExpr) exprType()  {}
-func (ListExpr) exprType()    {}
-func (NullExpr) exprType()    {}
+func (FunctionApplicationExpr) exprType() {}
+func (NumberExpr) exprType()              {}
+func (VarUseExpr) exprType()              {}
+func (BoolExpr) exprType()                {}
+func (IfElseExpr) exprType()              {}
+func (IfOnlyExpr) exprType()              {}
+func (StringExpr) exprType()              {}
+func (ListExpr) exprType()                {}
+func (NullExpr) exprType()                {}
+func (ClosureDefExpr) exprType()          {}
+func (ClosureApplicationExpr) exprType()  {}
 
 func (VarDefStmt) stmtType()  {}
 func (FuncDefStmt) stmtType() {}
@@ -292,20 +314,25 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 				Detail: "Expression must have non-zero children"}
 		}
 		if litNode, ok := safeTraverse(node, []int{0, 0}); ok {
-			if litNode.Data == "if" {
-				return constructor.createIfExpr(node)
-			} else if litNode.Data == "list" {
-				return constructor.createList(node)
-			} else if _, isFunc := constructor.FunctionNames[litNode.Data]; isFunc {
-				return constructor.createFuncAppExpr(node)
+			if litNode.Kind == parser.LiteralNode {
+				if litNode.Data == "if" {
+					return constructor.createIfExpr(node)
+				} else if litNode.Data == "list" {
+					return constructor.createList(node)
+				} else if litNode.Data == "lambda" {
+					return constructor.createClosure(node)
+				} else if litNode.Data == "funcall" {
+					// Force application of closure value
+					return constructor.createAppExpr(node.Children[1:], node.Range)
+				} else {
+					return constructor.createFuncAppExpr(node)
+				}
 			}
 		}
 		if len(node.Children) == 1 {
 			return constructor.createAstExpression(node.Children[0])
 		} else {
-			return nil, types.Error{Simple: "Parse Error",
-				Detail: fmt.Sprintf("unexpected node kind %s with %d children", node.Kind, len(node.Children)),
-				Range:  node.Range}
+			return constructor.createAppExpr(node.Children, node.Range)
 		}
 	}
 	return nil, types.Error{Simple: "Parse Error",
@@ -391,10 +418,33 @@ func (constructor *AstConstructor) createBody(node parser.Node) ([]Ast, error) {
 	}
 }
 
+// Create an (closure) application expression
+// The first node must be a value (e.g. in-place closure declaration or variable containing a closure)
+// The remaining nodes are expressions that resolve to arguments
+func (constructor AstConstructor) createAppExpr(exprParts []parser.Node, appRange types.FileRange) (ClosureApplicationExpr, error) {
+	if len(exprParts) == 0 {
+		return ClosureApplicationExpr{}, types.Error{Range: appRange, Simple: "Syntax error",
+			Detail: "Closure application must have a value, got 0-length s-expr"}
+	}
+	val, err := constructor.createAstExpression(exprParts[0])
+	if err != nil {
+		return ClosureApplicationExpr{}, err
+	}
+	closureApp := ClosureApplicationExpr{Range: appRange, Closure: val, Args: make([]Expr, len(exprParts)-1)}
+	for i, exprNode := range exprParts[1:] {
+		arg, err := constructor.createAstExpression(exprNode)
+		if err != nil {
+			return ClosureApplicationExpr{}, err
+		}
+		closureApp.Args[i] = arg
+	}
+	return closureApp, nil
+}
+
 func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, error) {
 	funcNameExpr, err := singleNestedExpr(node.Children[0])
 	if err == nil && funcNameExpr.Kind == parser.LiteralNode {
-		appExpr := FuncAppExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1), Range: node.Range}
+		appExpr := FunctionApplicationExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1), Range: node.Range}
 		for i, argNode := range node.Children[1:] {
 			argExpr, err := constructor.createAstExpression(argNode)
 			if err != nil {
@@ -407,6 +457,29 @@ func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, er
 		return appExpr, nil
 	}
 	return nil, types.Error{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
+}
+
+func (constructor *AstConstructor) createClosure(node parser.Node) (ClosureDefExpr, error) {
+	if len(node.Children) < 3 {
+		return ClosureDefExpr{}, types.Error{Range: node.Range,
+			Simple: "Syntax error whilst declaring closure",
+			Detail: fmt.Sprintf("Expected at least 3 child nodes for closure, got %d", len(node.Children))}
+	}
+	closure := ClosureDefExpr{Args: make([]string, len(node.Children[1].Children))}
+	for i, argExpr := range node.Children[1].Children {
+		if len(argExpr.Children) != 1 || argExpr.Children[0].Kind != parser.LiteralNode {
+			return ClosureDefExpr{}, types.Error{Range: node.Range,
+				Simple: "Syntax error - argument name must be a string",
+				Detail: fmt.Sprintf("Closure argument %d type is %s", i+1, argExpr.Kind)}
+		}
+		closure.Args[i] = argExpr.Children[0].Data
+	}
+	body, err := constructor.createFunctionBody(node.Children[2:])
+	if err != nil {
+		return ClosureDefExpr{}, err
+	}
+	closure.Body = body
+	return closure, nil
 }
 
 func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, error) {
@@ -471,19 +544,11 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 			funcDefExpr.Args = append(funcDefExpr.Args, argExpr.Children[0].Data)
 		}
 
-		// Function body
-		// We allow for a single direct value e.g. (defun f () 1)
-		// But anything else must be in its own expression
-		for _, expr := range node.Children[3:] {
-			exprAst, err := constructor.CreateExpressionAst(expr)
-			if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
-				return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
-			}
-			if err != nil {
-				return nil, err
-			}
-			funcDefExpr.Body = append(funcDefExpr.Body, exprAst)
+		body, err := constructor.createFunctionBody(node.Children[3:])
+		if err != nil {
+			return nil, err
 		}
+		funcDefExpr.Body = body
 
 		return funcDefExpr, nil
 	} else if literal == "while" {
@@ -494,4 +559,22 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 		Detail: fmt.Sprintf("Failed to process node - %s", node.Kind),
 		Range:  node.Range,
 	}
+}
+
+// Function body
+// We allow for a single direct value e.g. (defun f () 1)
+// But anything else must be in its own expression
+func (constructor *AstConstructor) createFunctionBody(bodyNodes []parser.Node) ([]Ast, error) {
+	body := make([]Ast, 0)
+	for _, expr := range bodyNodes {
+		exprAst, err := constructor.CreateExpressionAst(expr)
+		if len(bodyNodes) > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
+			return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
+		}
+		if err != nil {
+			return nil, err
+		}
+		body = append(body, exprAst)
+	}
+	return body, nil
 }

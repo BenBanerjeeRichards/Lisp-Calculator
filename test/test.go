@@ -178,6 +178,28 @@ func Run() {
 	ExpectBool("(<= 10 5)", false)
 	ExpectBool("(= 10 10)", true)
 	ExpectBool("(= 10 7)", false)
+	ExpectBool("(= true false)", false)
+	ExpectBool("(= false false)", true)
+	ExpectBool("(= true true)", true)
+	ExpectBool("(= null null)", true)
+	ExpectBool(`(= "hello" "world")`, false)
+	ExpectBool(`(= "hello" "hello")`, true)
+	ExpectBool(`(= "" "")`, true)
+	ExpectBool("(= (list) (list))", true)
+	ExpectBool("(= (list 1 2) (list 1 2))", true)
+	ExpectBool("(= (list 1 2) (list 1 3))", false)
+	ExpectBool("(= (list) (list 1 3))", false)
+	ExpectBool("(= (list false true) (list false true))", true)
+	ExpectBool("(= (list false true) (list false false))", false)
+	ExpectBool("(= (list null) (list null))", true)
+	ExpectBool(`(= (list 1 false true 23 null "hello") (list 1 false true 23 null "hello"))`, true)
+	ExpectBool("(= (list 1 false true 23 null) (list 1 false true 23 null))", true)
+	ExpectBool(`(= (list "hello" "world") (list "hello" "world"))`, true)
+	ExpectBool(`(= (list "hello" "world2") (list "hello" "world"))`, false)
+	ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list true false)))`, true)
+	// TODO fix these tests
+	// ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list null false)))`, false)
+	// ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list false false)))`, false)
 
 	ExpectList("(list 1 2 3)", []eval.Value{{Kind: eval.NumType, Num: 1},
 		{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}})
@@ -250,5 +272,32 @@ func Run() {
 	)
 	(sum)`,
 		15)
+
+	ExpectNumber(`
+	(def f (lambda (x) (+ x 1)))
+	(f 20)
+	`, 21)
+	ExpectNumber(`
+	(def f (lambda () 10))
+	(funcall f)
+	`, 10)
+	ExpectNumber(`
+	(def f (lambda (x) 
+		(def t 20)
+		(def y (+ t x))
+		(* y 2)
+		))
+	(f 4)
+	`, 48)
+	ExpectNumber(`
+	(def x 200)
+	(def f (lambda (l) (+ x l)))
+	(def x 1000)
+	(f 5)
+	`, 205)
+
+	ExpectNumber(`
+		((lambda (x y) (+ x y)) 10 20)
+	`, 30)
 
 }
