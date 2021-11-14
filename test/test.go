@@ -275,7 +275,7 @@ func Run() {
 
 	ExpectNumber(`
 	(def f (lambda (x) (+ x 1)))
-	(f 20)
+	(funcall f 20)
 	`, 21)
 	ExpectNumber(`
 	(def f (lambda () 10))
@@ -287,17 +287,22 @@ func Run() {
 		(def y (+ t x))
 		(* y 2)
 		))
-	(f 4)
+	(funcall f 4)
 	`, 48)
 	ExpectNumber(`
 	(def x 200)
 	(def f (lambda (l) (+ x l)))
 	(def x 1000)
-	(f 5)
+	(funcall f 5)
 	`, 205)
 
 	ExpectNumber(`
 		((lambda (x y) (+ x y)) 10 20)
 	`, 30)
+	ExpectNumber(`
+	(def x 10)
+	(defun f (x y) (+ x y))
+	(f 100 200)
+	`, 300)
 
 }

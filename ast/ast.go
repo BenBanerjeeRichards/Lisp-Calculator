@@ -313,7 +313,9 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 				Simple: "Parse error",
 				Detail: "Expression must have non-zero children"}
 		}
-		if litNode, ok := safeTraverse(node, []int{0, 0}); ok {
+		litNode, litNodeOk := safeTraverse(node, []int{0, 0})
+		isFirstNodeLiteral := litNodeOk && len(node.Children[0].Children) == 1
+		if isFirstNodeLiteral {
 			if litNode.Kind == parser.LiteralNode {
 				if litNode.Data == "if" {
 					return constructor.createIfExpr(node)
@@ -331,7 +333,8 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		}
 		if len(node.Children) == 1 {
 			return constructor.createAstExpression(node.Children[0])
-		} else {
+		}
+		if !isFirstNodeLiteral {
 			return constructor.createAppExpr(node.Children, node.Range)
 		}
 	}
