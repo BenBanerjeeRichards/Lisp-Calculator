@@ -677,7 +677,7 @@ func RunRepl() {
 			continue
 		}
 		util.WriteToFile("syntax.dot", util.ParseTreeToDot(expr))
-		ast, err := astConstruct.CreateExpressionAst(expr)
+		ast, err := astConstruct.CreateAstItem(expr)
 		if err != nil {
 			fmt.Println("Ast Error: ", err)
 			continue

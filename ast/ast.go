@@ -203,25 +203,16 @@ type AstConstructor struct {
 
 func (constructor *AstConstructor) New() {
 	constructor.FunctionNames = make(map[string]bool)
-	constructor.FunctionNames["+"] = true
-	constructor.FunctionNames["*"] = true
-	constructor.FunctionNames["/"] = true
-	constructor.FunctionNames["-"] = true
-	constructor.FunctionNames["log"] = true
-	constructor.FunctionNames["^"] = true
-	constructor.FunctionNames["sqrt"] = true
-	constructor.FunctionNames[">"] = true
-	constructor.FunctionNames[">="] = true
-	constructor.FunctionNames["<"] = true
-	constructor.FunctionNames["<="] = true
-	constructor.FunctionNames["="] = true
-	constructor.FunctionNames["print"] = true
 }
 
-func (constructor *AstConstructor) CreateAst(expr parser.Node) ([]Ast, error) {
+func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) ([]Ast, error) {
+	return constructor.createAst(rootExpression, true)
+}
+
+func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]Ast, error) {
 	asts := make([]Ast, 0)
 	for _, expression := range expr.Children {
-		ast, err := constructor.CreateExpressionAst(expression)
+		ast, err := constructor.createAstItem(expression, isRoot)
 		if err != nil {
 			return []Ast{}, err
 		}
@@ -262,9 +253,9 @@ func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
 	return node, true
 }
 
-func (constructor *AstConstructor) CreateExpressionAst(node parser.Node) (Ast, error) {
+func (constructor *AstConstructor) createAstItem(node parser.Node, isRoot bool) (Ast, error) {
 	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while") {
-		varDefStmt, err := constructor.createAstStatement(node)
+		varDefStmt, err := constructor.createAstStatement(node, isRoot)
 		if err != nil {
 			return Ast{}, err
 		}
@@ -281,6 +272,10 @@ func (constructor *AstConstructor) CreateExpressionAst(node parser.Node) (Ast, e
 	ast := Ast{}
 	ast.newExpression(expr)
 	return ast, nil
+}
+
+func (constructor *AstConstructor) CreateAstItem(node parser.Node) (Ast, error) {
+	return constructor.createAstItem(node, false)
 }
 
 func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, error) {
@@ -368,7 +363,7 @@ func (constructor *AstConstructor) createWhileLoop(node parser.Node) (Stmt, erro
 	}
 	whileStmt := WhileStmt{Condition: cond, Body: make([]Ast, 0), Range: node.Range}
 	for _, expr := range node.Children[2:] {
-		exprAst, err := constructor.CreateExpressionAst(expr)
+		exprAst, err := constructor.CreateAstItem(expr)
 		if len(node.Children)-3 > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
 			return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "While requires body to be contained in expression"}
 		}
@@ -411,13 +406,13 @@ func (constructor *AstConstructor) createIfExpr(node parser.Node) (Expr, error) 
 func (constructor *AstConstructor) createBody(node parser.Node) ([]Ast, error) {
 	if len(node.Children) > 0 && len(node.Children[0].Children) == 1 && node.Children[0].Children[0].Kind != parser.ExpressionNode {
 		// e.g. (+ 10 4)
-		ast, err := constructor.CreateExpressionAst(node)
+		ast, err := constructor.CreateAstItem(node)
 		if err != nil {
 			return []Ast{}, err
 		}
 		return []Ast{ast}, nil
 	} else {
-		return constructor.CreateAst(node)
+		return constructor.createAst(node, false)
 	}
 }
 
@@ -485,7 +480,7 @@ func (constructor *AstConstructor) createClosure(node parser.Node) (ClosureDefEx
 	return closure, nil
 }
 
-func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, error) {
+func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot bool) (Stmt, error) {
 	ok, literal := nestedLiteralValue(node)
 	if !ok {
 		return nil, types.Error{
@@ -524,6 +519,11 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 			return nil, types.Error{
 				Simple: "Invalid function declaration - name must be a literal",
 				Range:  node.Children[1].Range,
+			}
+		}
+		if !isRoot {
+			return nil, types.Error{Range: node.Range,
+				Simple: fmt.Sprintf("Invalid function declaration %s - functions can only be declared at top level. Use a closure instead", node.Children[1].Children[0].Data),
 			}
 		}
 
@@ -570,7 +570,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node) (Stmt, e
 func (constructor *AstConstructor) createFunctionBody(bodyNodes []parser.Node) ([]Ast, error) {
 	body := make([]Ast, 0)
 	for _, expr := range bodyNodes {
-		exprAst, err := constructor.CreateExpressionAst(expr)
+		exprAst, err := constructor.CreateAstItem(expr)
 		if len(bodyNodes) > 1 && len(expr.Children) == 1 && expr.Children[0].Kind != parser.ExpressionNode {
 			return nil, types.Error{Range: expr.Range, Simple: "Syntax error", Detail: "Function requires body to be contained in expression"}
 		}
