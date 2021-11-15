@@ -57,9 +57,11 @@ func (r *Runner) ExpectNumber(code string, expected float64) bool {
 			printTestFailedNum(code, expected, evalResult.Num)
 			return false
 		}
+		r.numPassed += 1
+		return true
 	}
-	r.numPassed += 1
-	return true
+	r.numFailed += 1
+	return false
 }
 
 func (r *Runner) ExpectBool(code string, expected bool) bool {
@@ -74,9 +76,11 @@ func (r *Runner) ExpectBool(code string, expected bool) bool {
 			printTestFailedBool(code, expected, evalResult.Bool)
 			return false
 		}
+		r.numPassed += 1
+		return true
 	}
-	r.numPassed += 1
-	return true
+	r.numFailed += 1
+	return false
 }
 
 func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
@@ -98,10 +102,11 @@ func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
 				return false
 			}
 		}
-
+		r.numPassed += 1
+		return true
 	}
-	r.numPassed += 1
-	return true
+	r.numFailed += 1
+	return false
 }
 
 func (r *Runner) ExpectString(code string, expected string) bool {
@@ -116,9 +121,11 @@ func (r *Runner) ExpectString(code string, expected string) bool {
 			printTestFailedString(code, expected, evalResult.String)
 			return false
 		}
+		r.numPassed += 1
+		return true
 	}
-	r.numPassed += 1
-	return true
+	r.numFailed += 1
+	return false
 }
 func (r *Runner) ExpectNull(code string) bool {
 	if evalResult, ok := evalProgram(code); ok {
@@ -127,9 +134,11 @@ func (r *Runner) ExpectNull(code string) bool {
 			fmt.Printf("Failed: %s\nReason: Expected null but got type %s\n", code, evalResult.Kind)
 			return false
 		}
+		r.numPassed += 1
+		return true
 	}
-	r.numPassed += 1
-	return true
+	r.numFailed += 1
+	return false
 
 }
 
@@ -200,6 +209,8 @@ func Run() {
 
 	r.ExpectBool("(true)", true)
 	r.ExpectBool("(false)", false)
+
+	// Comparison operations
 	r.ExpectBool("(< 10 5)", false)
 	r.ExpectBool("(< 5 10)", true)
 	r.ExpectBool("(> 5 10)", false)
@@ -212,6 +223,8 @@ func Run() {
 	r.ExpectBool("(<= 10 10)", true)
 	r.ExpectBool("(<= 5 10)", true)
 	r.ExpectBool("(<= 10 5)", false)
+
+	// Eqality
 	r.ExpectBool("(= 10 10)", true)
 	r.ExpectBool("(= 10 7)", false)
 	r.ExpectBool("(= true false)", false)
@@ -244,6 +257,27 @@ func Run() {
 		{Kind: eval.BoolType, Bool: false}, {Kind: eval.NullType}, {Kind: eval.StringType, String: "s"}})
 	r.ExpectList("(list 1 (list 2 3) null)", []eval.Value{{Kind: eval.NumType, Num: 1},
 		{Kind: eval.ListType, List: []eval.Value{{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}}}, {Kind: eval.NullType}})
+
+	// List length
+	r.ExpectNumber("(length (list))", 0)
+	r.ExpectNumber("(length (list 1 2 3))", 3)
+	r.ExpectNumber("(length (list 1 null false))", 3)
+	r.ExpectNumber(`(length (list 1 (list 4 3 2 1 false "hello") 3))`, 3)
+
+	// Insert into list
+	r.ExpectBool("(= (insert 0 10 (list 1 2 3)) (list 10 1 2 3))", true)
+	r.ExpectBool("(= (insert -50 10 (list 1 2 3)) (list 10 1 2 3))", true)
+	r.ExpectBool("(= (insert 1 10 (list 1 2 3)) (list 1 10 2 3))", true)
+	r.ExpectBool("(= (insert 3 10 (list 1 2 3)) (list 1 2 3 10))", true)
+	r.ExpectBool("(= (insert 30 10 (list 1 2 3)) (list 1 2 3 10))", true)
+
+	// Index into list
+	r.ExpectNumber("(nth 0 (list 1 2 3))", 1)
+	r.ExpectNumber("(nth 1 (list 1 2 3))", 2)
+	r.ExpectNumber("(nth 2 (list 1 2 3))", 3)
+	r.ExpectNull("(nth -1 (list 1 2 3))")
+	r.ExpectNull("(nth 4 (list 1 2 3))")
+	r.ExpectNull("(nth 40 (list 1 2 3))")
 
 	r.ExpectNull("(null)")
 

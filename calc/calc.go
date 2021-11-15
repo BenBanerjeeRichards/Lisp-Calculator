@@ -14,7 +14,7 @@ func AnnotateError(code string, error types.Error) string {
 	// reset := "\033[0m"
 	// bold := "\033[1m"
 	// red := "\031[1m"
-	output := fmt.Sprintf("%s - %s\n", error.Range, error.Detail)
+	output := fmt.Sprintf("%s - %s(%s)\n", error.Range, error.Simple, error.Detail)
 	codeLines := strings.Split(code, "\n")
 	start := error.Range.Start.Line - 1
 	end := error.Range.End.Line + 1

@@ -487,7 +487,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		case "print":
 			if len(exprNode.Args) != 1 {
 				return Value{}, types.Error{Range: exprNode.Range,
-					Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(exprNode.Args))}
+					Simple: fmt.Sprintf("Unary function `print` expected one paremters (got %d)", len(exprNode.Args))}
 			}
 			val, err := evalExpr(exprNode.Args[0], env)
 			if err != nil {
@@ -497,6 +497,89 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			ret := Value{}
 			ret.NewNull()
 			return ret, nil
+		case "length":
+			if len(exprNode.Args) != 1 {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Unary function `length` expected one paremters (got %d)", len(exprNode.Args))}
+			}
+			val, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return Value{}, err
+			}
+			if val.Kind != ListType {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function length requires argument of type list (got %s)", val.Kind)}
+			}
+			lengthVal := Value{}
+			lengthVal.NewNum(float64(len(val.List)))
+			return lengthVal, nil
+		case "insert":
+			if len(exprNode.Args) != 3 {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `insert` expected 3 paremters (got %d)", len(exprNode.Args))}
+			}
+			insertIndexVal, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return Value{}, err
+			}
+			if insertIndexVal.Kind != NumType {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `insert` expected first argument (index) to be a number (got %s)", insertIndexVal.Kind)}
+			}
+			valToInsert, err := evalExpr(exprNode.Args[1], env)
+			if err != nil {
+				return Value{}, err
+			}
+			list, err := evalExpr(exprNode.Args[2], env)
+			if err != nil {
+				return Value{}, err
+			}
+			if list.Kind != ListType {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `insert` expected third argument (list) to be a list (got %s)", list.Kind)}
+			}
+			idx := int(insertIndexVal.Num)
+			if idx < 0 {
+				idx = 0
+			}
+			var newList []Value
+			if idx >= len(list.List) {
+				newList = append(list.List, valToInsert)
+			} else {
+				newList = append(list.List[:idx+1], list.List[idx:]...)
+				newList[idx] = valToInsert
+			}
+			newListVal := Value{}
+			newListVal.NewList(newList)
+			return newListVal, nil
+		case "nth":
+			if len(exprNode.Args) != 2 {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `nth` expected 2 paremters (got %d)", len(exprNode.Args))}
+			}
+			indexToGetVal, err := evalExpr(exprNode.Args[0], env)
+			if err != nil {
+				return Value{}, err
+			}
+			if indexToGetVal.Kind != NumType {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `nth` expected first argument (index) to be a number (got %s)", indexToGetVal.Kind)}
+			}
+			list, err := evalExpr(exprNode.Args[1], env)
+			if err != nil {
+				return Value{}, err
+			}
+			if list.Kind != ListType {
+				return Value{}, types.Error{Range: exprNode.Range,
+					Simple: fmt.Sprintf("Function `nth` expected second argument (list) to be a list (got %s)", list.Kind)}
+			}
+			idx := int(indexToGetVal.Num)
+			if idx < 0 || idx >= len(list.List) {
+				v := Value{}
+				v.NewNull()
+				return v, nil
+			}
+			return list.List[idx], nil
 		default:
 			return Value{}, types.Error{Simple: fmt.Sprintf("Unknown function %s", exprNode.Identifier), Range: exprNode.GetRange()}
 		}
