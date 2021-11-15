@@ -11,7 +11,6 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
-	"github.com/benbanerjeerichards/lisp-calculator/util"
 )
 
 type Env struct {
@@ -658,6 +657,8 @@ func RunRepl() {
 	env := Env{}
 	env.New()
 	astConstruct := ast.AstConstructor{}
+	// Otherwise really annoying
+	astConstruct.AllowFunctionRedeclaration = true
 	astConstruct.New()
 
 	for {
@@ -676,17 +677,18 @@ func RunRepl() {
 			fmt.Println("Parse Error: ", err.Error())
 			continue
 		}
-		util.WriteToFile("syntax.dot", util.ParseTreeToDot(expr))
-		ast, err := astConstruct.CreateAstItem(expr)
-		if err != nil {
-			fmt.Println("Ast Error: ", err)
-			continue
+		asts, err := astConstruct.CreateAst(expr)
+		for _, ast := range asts {
+			if err != nil {
+				fmt.Println("Ast Error: ", err)
+				continue
+			}
+			val, err := Eval(ast, &env)
+			if err != nil {
+				fmt.Println("Eval Error: ", err.Error())
+				continue
+			}
+			fmt.Println(val.ToString())
 		}
-		val, err := Eval(ast, &env)
-		if err != nil {
-			fmt.Println("Eval Error: ", err.Error())
-			continue
-		}
-		fmt.Println(val.ToString())
 	}
 }

@@ -198,11 +198,13 @@ func (ast *Ast) newExpression(expr Expr) {
 }
 
 type AstConstructor struct {
-	FunctionNames map[string]bool
+	AllowFunctionRedeclaration bool
+	FunctionNames              map[string]bool
 }
 
 func (constructor *AstConstructor) New() {
 	constructor.FunctionNames = make(map[string]bool)
+	constructor.AllowFunctionRedeclaration = false
 }
 
 func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) ([]Ast, error) {
@@ -218,6 +220,7 @@ func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]A
 		}
 		asts = append(asts, ast)
 	}
+	fmt.Println(constructor.FunctionNames)
 	return asts, nil
 }
 
@@ -528,7 +531,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 		}
 
 		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
-		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok {
+		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok && !constructor.AllowFunctionRedeclaration {
 			return nil, types.Error{
 				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefExpr.Identifier),
 				Range:  node.Range,
