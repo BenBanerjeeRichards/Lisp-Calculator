@@ -199,16 +199,28 @@ func (ast *Ast) newExpression(expr Expr) {
 
 type AstConstructor struct {
 	AllowFunctionRedeclaration bool
-	FunctionNames              map[string]bool
+	Functions                  map[string]*FuncDefStmt
+	GlobalVariables            map[string]*VarDefStmt
 }
 
 func (constructor *AstConstructor) New() {
-	constructor.FunctionNames = make(map[string]bool)
+	constructor.Functions = make(map[string]*FuncDefStmt)
+	constructor.GlobalVariables = make(map[string]*VarDefStmt)
 	constructor.AllowFunctionRedeclaration = false
 }
 
-func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) ([]Ast, error) {
-	return constructor.createAst(rootExpression, true)
+type AstResult struct {
+	Asts            []Ast
+	GlobalVariables map[string]*VarDefStmt
+	Functions       map[string]*FuncDefStmt
+}
+
+func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstResult, error) {
+	asts, err := constructor.createAst(rootExpression, true)
+	if err != nil {
+		return AstResult{}, nil
+	}
+	return AstResult{Asts: asts, GlobalVariables: constructor.GlobalVariables, Functions: constructor.Functions}, nil
 }
 
 func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]Ast, error) {
@@ -220,7 +232,6 @@ func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]A
 		}
 		asts = append(asts, ast)
 	}
-	fmt.Println(constructor.FunctionNames)
 	return asts, nil
 }
 
@@ -508,7 +519,11 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 				Detail: err.Error(),
 				Range:  node.Children[2].Range}
 		}
-		return VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
+		varAst, err := VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
+		if isRoot && err == nil {
+			constructor.GlobalVariables[varAst.Identifier] = &varAst
+		}
+		return varAst, err
 	} else if literal == "defun" {
 		// (defun identifier (args) definition)
 		if len(node.Children) < 4 {
@@ -530,14 +545,13 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 			}
 		}
 
-		funcDefExpr := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
-		if _, ok = constructor.FunctionNames[funcDefExpr.Identifier]; ok && !constructor.AllowFunctionRedeclaration {
+		funcDefStmt := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
+		if _, ok = constructor.Functions[funcDefStmt.Identifier]; ok && !constructor.AllowFunctionRedeclaration {
 			return nil, types.Error{
-				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefExpr.Identifier),
+				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefStmt.Identifier),
 				Range:  node.Range,
 			}
 		}
-		constructor.FunctionNames[funcDefExpr.Identifier] = true
 
 		argNode := node.Children[2]
 		for _, argExpr := range argNode.Children {
@@ -547,16 +561,17 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 					Range:  argExpr.Range,
 				}
 			}
-			funcDefExpr.Args = append(funcDefExpr.Args, argExpr.Children[0].Data)
+			funcDefStmt.Args = append(funcDefStmt.Args, argExpr.Children[0].Data)
 		}
 
 		body, err := constructor.createFunctionBody(node.Children[3:])
 		if err != nil {
 			return nil, err
 		}
-		funcDefExpr.Body = body
+		funcDefStmt.Body = body
 
-		return funcDefExpr, nil
+		constructor.Functions[funcDefStmt.Identifier] = &funcDefStmt
+		return funcDefStmt, nil
 	} else if literal == "while" {
 		return constructor.createWhileLoop(node)
 	}

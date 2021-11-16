@@ -61,5 +61,5 @@ func Ast(code string) ([]ast.Ast, error) {
 	if err != nil {
 		return []ast.Ast{}, err
 	}
-	return astTree, nil
+	return astTree.Asts, nil
 }

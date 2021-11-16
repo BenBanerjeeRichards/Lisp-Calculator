@@ -481,7 +481,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range, Simple: "Operand types to = are different"}
 			}
 			val := Value{}
-			val.NewBool(lhsVal.Equals(rhsVal))
+			val.NewBool(lhsVal.equals(rhsVal))
 			return val, nil
 		case "print":
 			if len(exprNode.Args) != 1 {
@@ -625,7 +625,7 @@ func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types
 	return Value{}, errors.New("??")
 }
 
-func (a Value) Equals(b Value) bool {
+func (a Value) equals(b Value) bool {
 	if a.Kind != b.Kind {
 		return false
 	}
@@ -643,7 +643,7 @@ func (a Value) Equals(b Value) bool {
 			return false
 		}
 		for i := range a.List {
-			if !a.List[i].Equals(b.List[i]) {
+			if !a.List[i].equals(b.List[i]) {
 				return false
 			}
 		}
@@ -678,7 +678,7 @@ func RunRepl() {
 			continue
 		}
 		asts, err := astConstruct.CreateAst(expr)
-		for _, ast := range asts {
+		for _, ast := range asts.Asts {
 			if err != nil {
 				fmt.Println("Ast Error: ", err)
 				continue
