@@ -20,7 +20,6 @@ type Env struct {
 
 func (env *Env) New() {
 	env.Variables = make(map[string]Value)
-	env.Functions = make(map[string]ast.FuncDefStmt)
 }
 
 const (
@@ -120,28 +119,28 @@ type EvalResult struct {
 }
 
 // Eval every ast and return the value of the final one
-func EvalProgram(asts []ast.Ast) (Value, error) {
-	if len(asts) == 0 {
+func EvalProgram(astResult ast.AstResult) (Value, error) {
+	if len(astResult.Asts) == 0 {
 		return Value{}, errors.New("eval program requires non-zero numbers of asts")
 	}
 	env := Env{}
 	env.New()
 
-	for i, ast := range asts {
-		result, err := Eval(ast, &env)
+	for i, ast := range astResult.Asts {
+		result, err := Eval(ast, &env, astResult.Functions)
 		if err != nil {
 			return Value{}, err
 		}
-		if i == len(asts)-1 {
+		if i == len(astResult.Asts)-1 {
 			return result, nil
 		}
 	}
 	return Value{}, errors.New("unknown error?")
 }
 
-func Eval(astNode ast.Ast, env *Env) (Value, error) {
+func Eval(astNode ast.Ast, env *Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
 	if astNode.Kind == ast.StmtType {
-		err := evalStmt(astNode.Statement, env)
+		err := evalStmt(astNode.Statement, env, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -149,7 +148,7 @@ func Eval(astNode ast.Ast, env *Env) (Value, error) {
 		return Value{Kind: NullType}, nil
 	}
 	if astNode.Kind == ast.ExprType {
-		val, err := evalExpr(astNode.Expression, *env)
+		val, err := evalExpr(astNode.Expression, *env, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -158,18 +157,18 @@ func Eval(astNode ast.Ast, env *Env) (Value, error) {
 	return Value{}, errors.New("?")
 }
 
-func evalStmt(node ast.Stmt, env *Env) error {
+func evalStmt(node ast.Stmt, env *Env, functions map[string]*ast.FuncDefStmt) error {
 	switch stmtNode := node.(type) {
 	case ast.VarDefStmt:
-		result, err := evalExpr(stmtNode.Value, *env)
+		result, err := evalExpr(stmtNode.Value, *env, functions)
 		if err != nil {
 			return err
 		}
 		env.Variables[stmtNode.Identifier] = result
 	case ast.FuncDefStmt:
-		env.Functions[stmtNode.Identifier] = stmtNode
+		// NOP - already handled by AST
 	case ast.WhileStmt:
-		cond, err := evalExpr(stmtNode.Condition, *env)
+		cond, err := evalExpr(stmtNode.Condition, *env, functions)
 		if err != nil {
 			return err
 		}
@@ -179,9 +178,9 @@ func evalStmt(node ast.Stmt, env *Env) error {
 		}
 		for cond.Bool {
 			for _, ast := range stmtNode.Body {
-				Eval(ast, env)
+				Eval(ast, env, functions)
 			}
-			cond, err = evalExpr(stmtNode.Condition, *env)
+			cond, err = evalExpr(stmtNode.Condition, *env, functions)
 			if err != nil {
 				return err
 			}
@@ -196,12 +195,12 @@ func evalStmt(node ast.Stmt, env *Env) error {
 	return nil
 }
 
-func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
-	lhsValue, err := evalExpr(lhs, env)
+func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+	lhsValue, err := evalExpr(lhs, env, functions)
 	if err != nil {
 		return Value{}, err
 	}
-	rhsValue, err := evalExpr(rhs, env)
+	rhsValue, err := evalExpr(rhs, env, functions)
 	if err != nil {
 		return Value{}, err
 	}
@@ -219,12 +218,12 @@ func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Exp
 	return val, nil
 }
 
-func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
-	lhsValue, err := evalExpr(lhs, env)
+func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+	lhsValue, err := evalExpr(lhs, env, functions)
 	if err != nil {
 		return Value{}, err
 	}
-	rhsValue, err := evalExpr(rhs, env)
+	rhsValue, err := evalExpr(rhs, env, functions)
 	if err != nil {
 		return Value{}, err
 	}
@@ -241,7 +240,7 @@ func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.E
 	return val, nil
 }
 
-func evalExpr(node ast.Expr, env Env) (Value, error) {
+func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
 	switch exprNode := node.(type) {
 	case ast.NumberExpr:
 		val := Value{}
@@ -262,7 +261,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 	case ast.ListExpr:
 		val := Value{Kind: ListType, List: make([]Value, len(exprNode.Value))}
 		for i, expr := range exprNode.Value {
-			itemValue, err := evalExpr(expr, env)
+			itemValue, err := evalExpr(expr, env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -277,7 +276,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				Simple: fmt.Sprintf("Undeclared variable %s", exprNode.Identifier)}
 		}
 	case ast.IfElseExpr:
-		condRes, err := evalExpr(exprNode.Condition, env)
+		condRes, err := evalExpr(exprNode.Condition, env, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -290,7 +289,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			branch = exprNode.ElseBranch
 		}
 		for i, ast := range branch {
-			evalResult, err := Eval(ast, &env)
+			evalResult, err := Eval(ast, &env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -299,7 +298,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			}
 		}
 	case ast.IfOnlyExpr:
-		condRes, err := evalExpr(exprNode.Condition, env)
+		condRes, err := evalExpr(exprNode.Condition, env, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -313,7 +312,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 			return val, nil
 		}
 		for i, ast := range exprNode.IfBranch {
-			evalResult, err := Eval(ast, &env)
+			evalResult, err := Eval(ast, &env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -326,16 +325,13 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		value := Value{}
 		closureEnv := Env{}
 		closureEnv.New()
-		for funcName, f := range env.Functions {
-			closureEnv.Functions[funcName] = f
-		}
 		for varName, v := range env.Variables {
 			closureEnv.Variables[varName] = v
 		}
 		value.NewClosure(exprNode.Args, exprNode.Body, closureEnv)
 		return value, nil
 	case ast.ClosureApplicationExpr:
-		closureVal, err := evalExpr(exprNode.Closure, env)
+		closureVal, err := evalExpr(exprNode.Closure, env, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -346,20 +342,19 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 		if len(closure.Args) != len(exprNode.Args) {
 			return Value{}, types.Error{Range: exprNode.Range, Simple: fmt.Sprintf("Expected %d arguments to closure applicatoin, got %d", len(closure.Args), len(exprNode.Args))}
 		}
-		return evalClosure(closure, exprNode.Args, env, exprNode.Range)
+		return evalClosure(closure, exprNode.Args, env, functions, exprNode.Range)
 	case ast.FunctionApplicationExpr:
 		// First look up in function defintions, then try builtins
-		if funcDef, ok := env.Functions[exprNode.Identifier]; ok {
+		if funcDef, ok := functions[exprNode.Identifier]; ok {
 			if len(funcDef.Args) != len(exprNode.Args) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(exprNode.Args))}
 			}
 			funcAppEnv := Env{}
 			funcAppEnv.New()
-			funcAppEnv.Functions = env.Functions
 			for i, argName := range funcDef.Args {
 				argExpr := exprNode.Args[i]
-				argEvalValue, err := evalExpr(argExpr, env)
+				argEvalValue, err := evalExpr(argExpr, env, functions)
 				if err != nil {
 					return Value{}, err
 				}
@@ -367,7 +362,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				funcAppEnv.Variables[argName] = argEvalValue
 			}
 			for i, funcDefAst := range funcDef.Body {
-				evalResult, err := Eval(funcDefAst, &funcAppEnv)
+				evalResult, err := Eval(funcDefAst, &funcAppEnv, functions)
 				if err != nil {
 					return Value{}, err
 				}
@@ -381,7 +376,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				if len(exprNode.Args) == 0 {
 					return val, nil
 				} else if val.Kind == ClosureType {
-					return evalClosure(val.Closure, exprNode.Args, env, exprNode.Range)
+					return evalClosure(val.Closure, exprNode.Args, env, functions, exprNode.Range)
 				}
 			}
 		}
@@ -393,43 +388,43 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "-":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "*":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "/":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "^":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "log":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "sqrt":
 			if len(exprNode.Args) != 1 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(exprNode.Args))}
 			}
-			sqrtOf, err := evalExpr(exprNode.Args[0], env)
+			sqrtOf, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -445,35 +440,35 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case ">=":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "<":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "<=":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, exprNode.Args[0], exprNode.Args[1], env)
+			return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, exprNode.Args[0], exprNode.Args[1], env, functions)
 		case "=":
 			if len(exprNode.Args) != 2 {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(exprNode.Args))}
 			}
-			lhsVal, err := evalExpr(exprNode.Args[0], env)
+			lhsVal, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, nil
 			}
-			rhsVal, err := evalExpr(exprNode.Args[1], env)
+			rhsVal, err := evalExpr(exprNode.Args[1], env, functions)
 			if err != nil {
 				return Value{}, nil
 			}
@@ -488,7 +483,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Unary function `print` expected one paremters (got %d)", len(exprNode.Args))}
 			}
-			val, err := evalExpr(exprNode.Args[0], env)
+			val, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -501,7 +496,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Unary function `length` expected one paremters (got %d)", len(exprNode.Args))}
 			}
-			val, err := evalExpr(exprNode.Args[0], env)
+			val, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -517,7 +512,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Function `insert` expected 3 paremters (got %d)", len(exprNode.Args))}
 			}
-			insertIndexVal, err := evalExpr(exprNode.Args[0], env)
+			insertIndexVal, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -525,11 +520,11 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Function `insert` expected first argument (index) to be a number (got %s)", insertIndexVal.Kind)}
 			}
-			valToInsert, err := evalExpr(exprNode.Args[1], env)
+			valToInsert, err := evalExpr(exprNode.Args[1], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
-			list, err := evalExpr(exprNode.Args[2], env)
+			list, err := evalExpr(exprNode.Args[2], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -556,7 +551,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Function `nth` expected 2 paremters (got %d)", len(exprNode.Args))}
 			}
-			indexToGetVal, err := evalExpr(exprNode.Args[0], env)
+			indexToGetVal, err := evalExpr(exprNode.Args[0], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -564,7 +559,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 				return Value{}, types.Error{Range: exprNode.Range,
 					Simple: fmt.Sprintf("Function `nth` expected first argument (index) to be a number (got %s)", indexToGetVal.Kind)}
 			}
-			list, err := evalExpr(exprNode.Args[1], env)
+			list, err := evalExpr(exprNode.Args[1], env, functions)
 			if err != nil {
 				return Value{}, err
 			}
@@ -586,7 +581,7 @@ func evalExpr(node ast.Expr, env Env) (Value, error) {
 	return Value{}, errors.New("?")
 }
 
-func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types.FileRange) (Value, error) {
+func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, functions map[string]*ast.FuncDefStmt, cRange types.FileRange) (Value, error) {
 	// Closure method application
 	if len(closureDef.Args) != len(args) {
 		return Value{}, types.Error{Range: cRange,
@@ -595,11 +590,6 @@ func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types
 	// Construct closure environment, which is based on environment when closure was declared (the captured scope)
 	closureEnv := closureDef.ClosureEnv
 
-	for funcName, f := range env.Functions {
-		if _, ok := closureEnv.Functions[funcName]; !ok {
-			closureEnv.Functions[funcName] = f
-		}
-	}
 	for varName, v := range env.Variables {
 		if _, ok := closureEnv.Variables[varName]; !ok {
 			closureEnv.Variables[varName] = v
@@ -607,14 +597,14 @@ func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types
 	}
 	for i, argName := range closureDef.Args {
 		argExpr := args[i]
-		argEvalValue, err := evalExpr(argExpr, env)
+		argEvalValue, err := evalExpr(argExpr, env, functions)
 		if err != nil {
 			return Value{}, err
 		}
 		closureEnv.Variables[argName] = argEvalValue
 	}
 	for i, closureAst := range closureDef.Body {
-		evalResult, err := Eval(closureAst, &closureEnv)
+		evalResult, err := Eval(closureAst, &closureEnv, functions)
 		if err != nil {
 			return Value{}, err
 		}
@@ -683,7 +673,7 @@ func RunRepl() {
 				fmt.Println("Ast Error: ", err)
 				continue
 			}
-			val, err := Eval(ast, &env)
+			val, err := Eval(ast, &env, astConstruct.Functions)
 			if err != nil {
 				fmt.Println("Eval Error: ", err.Error())
 				continue
