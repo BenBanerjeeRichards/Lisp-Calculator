@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
-	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/test"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 	"github.com/benbanerjeerichards/lisp-calculator/util"
@@ -14,11 +13,10 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		test.Run()
-		eval.RunRepl()
+		calc.RunRepl()
 	}
 	if len(args) == 1 && args[0] == "-i" {
-		eval.RunRepl()
+		calc.RunRepl()
 		return
 	}
 	if len(args) == 1 && args[0] == "-t" {
@@ -31,7 +29,7 @@ func main() {
 			fmt.Printf("Failed to open file %s\n", args[0])
 			return
 		}
-		evalResult, err := calc.ParseAndEval(fileContents)
+		evalResult, err := calc.ParseAndEval(fileContents, args)
 		if err != nil {
 			if astError, ok := err.(types.Error); ok {
 				fmt.Println(calc.AnnotateError(fileContents, astError))

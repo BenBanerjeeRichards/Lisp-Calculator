@@ -37,7 +37,7 @@ func evalProgram(code string) (eval.Value, bool) {
 		printTestFailedErr(code, err)
 		return eval.Value{}, false
 	}
-	evalResult, err := eval.EvalProgram(asts)
+	evalResult, err := eval.EvalProgram(asts, []string{})
 	if err != nil {
 		printTestFailedErr(code, err)
 		return eval.Value{}, false

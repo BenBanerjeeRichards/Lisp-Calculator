@@ -1,7 +1,9 @@
 package calc
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
@@ -35,12 +37,12 @@ func AnnotateError(code string, error types.Error) string {
 	return output
 }
 
-func ParseAndEval(code string) (eval.Value, error) {
+func ParseAndEval(code string, programArgs []string) (eval.Value, error) {
 	ast, err := Ast(code)
 	if err != nil {
 		return eval.Value{}, err
 	}
-	evalResult, err := eval.EvalProgram(ast)
+	evalResult, err := eval.EvalProgram(ast, programArgs)
 	if err != nil {
 		return eval.Value{}, err
 	}
@@ -62,4 +64,65 @@ func Ast(code string) (ast.AstResult, error) {
 		return ast.AstResult{}, err
 	}
 	return astTree, nil
+}
+
+func RunRepl() {
+	reader := bufio.NewReader(os.Stdin)
+	env := eval.Env{}
+	env.New()
+	astConstruct := ast.AstConstructor{}
+	// Otherwise really annoying
+	astConstruct.AllowFunctionRedeclaration = true
+	astConstruct.New()
+
+	for {
+		fmt.Print("calc> ")
+		text, _ := reader.ReadString('\n')
+		text = text[:len(text)-1]
+		if strings.HasPrefix(text, ":l") {
+			// Load file into REPL environment
+			parts := strings.Split(text, ":l")
+			if len(parts) <= 1 {
+				fmt.Println("Incorrect format for load command. Expected :l <path>")
+				continue
+			}
+			// fileContents, err := util.ReadFile(parts[1])
+			// if err != nil {
+			// 	fmt.Println("Failed to load file", parts[1])
+			// 	continue
+			// }
+			// env, err := ParseAndEval(fileContents)
+			// if err != nil {
+			// 	fmt.Println("Failed to parse and evalulate file")
+			// 	if astError, ok := err.(types.Error); ok {
+			// 		fmt.Println(AnnotateError(fileContents, astError))
+			// 	} else {
+			// 		fmt.Println(err)
+			// 	}
+			// 	continue
+			// }
+			// Update our REPL environment with the new environment
+		}
+		tokens := parser.Tokenise(text)
+		parser := parser.Parser{}
+		parser.New(tokens)
+		expr, err := parser.ParseExpression()
+		if err != nil {
+			fmt.Println("Parse Error: ", err.Error())
+			continue
+		}
+		asts, err := astConstruct.CreateAst(expr)
+		for _, ast := range asts.Asts {
+			if err != nil {
+				fmt.Println("Ast Error: ", err)
+				continue
+			}
+			val, err := eval.Eval(ast, &env, astConstruct.Functions)
+			if err != nil {
+				fmt.Println("Eval Error: ", err.Error())
+				continue
+			}
+			fmt.Println(val.ToString())
+		}
+	}
 }
