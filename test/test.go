@@ -37,7 +37,8 @@ func evalProgram(code string) (eval.Value, bool) {
 		printTestFailedErr(code, err)
 		return eval.Value{}, false
 	}
-	evalResult, err := eval.EvalProgram(asts, []string{})
+	evalulator := eval.Evalulator{}
+	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
 	if err != nil {
 		printTestFailedErr(code, err)
 		return eval.Value{}, false
@@ -398,6 +399,28 @@ func Run() {
 	 (f)
 	 (x)
 	`, 10)
+
+	// Main function
+	r.ExpectNumber(`
+	(100)
+	(defun main () 10)
+	`, 10)
+	r.ExpectString(`
+	(100)
+	(defun main (args) (nth 0 args))
+	`, "arg1")
+	r.ExpectString(`
+	(100)
+	(defun main (args) (nth 2 args))
+	`, "arg3")
+	r.ExpectNumber(`
+	(defun f (a b c) (+ a (- b c)))
+	(defun main (args) (f 10 20 30))
+	`, 0)
+	r.ExpectNumber(`
+	(def aGlobalVariable 100)
+	(defun main () (aGlobalVariable))
+	`, 100)
 
 	fmt.Print("\033[1m")
 	r.printSummary()

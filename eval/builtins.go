@@ -8,12 +8,12 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
-func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
-	lhsValue, err := evalExpr(lhs, env, functions)
+func (evalulator Evalulator) builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
+	lhsValue, err := evalulator.evalExpr(lhs, env)
 	if err != nil {
 		return Value{}, err
 	}
-	rhsValue, err := evalExpr(rhs, env, functions)
+	rhsValue, err := evalulator.evalExpr(rhs, env)
 	if err != nil {
 		return Value{}, err
 	}
@@ -31,12 +31,12 @@ func builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Exp
 	return val, nil
 }
 
-func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
-	lhsValue, err := evalExpr(lhs, env, functions)
+func (evalulator Evalulator) builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
+	lhsValue, err := evalulator.evalExpr(lhs, env)
 	if err != nil {
 		return Value{}, err
 	}
-	rhsValue, err := evalExpr(rhs, env, functions)
+	rhsValue, err := evalulator.evalExpr(rhs, env)
 	if err != nil {
 		return Value{}, err
 	}
@@ -53,50 +53,50 @@ func builtInBinaryCompare(f func(float64, float64) bool, lhs ast.Expr, rhs ast.E
 	return val, nil
 }
 
-func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env) (Value, error) {
 	switch funcAppNode.Identifier {
 	case "+":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return f1 + f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "-":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return f1 - f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "*":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return f1 * f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "/":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return f1 / f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "^":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "log":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return math.Log(f2) / math.Log(f1) }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "sqrt":
 		if len(funcAppNode.Args) != 1 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(funcAppNode.Args))}
 		}
-		sqrtOf, err := evalExpr(funcAppNode.Args[0], env, functions)
+		sqrtOf, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -112,35 +112,35 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryCompare(func(f1, f2 float64) bool { return f1 > f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case ">=":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryCompare(func(f1, f2 float64) bool { return f1 >= f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "<":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryCompare(func(f1, f2 float64) bool { return f1 < f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "<=":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		return builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env, functions)
+		return evalulator.builtInBinaryCompare(func(f1, f2 float64) bool { return f1 <= f2 }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "=":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
-		lhsVal, err := evalExpr(funcAppNode.Args[0], env, functions)
+		lhsVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, nil
 		}
-		rhsVal, err := evalExpr(funcAppNode.Args[1], env, functions)
+		rhsVal, err := evalulator.evalExpr(funcAppNode.Args[1], env)
 		if err != nil {
 			return Value{}, nil
 		}
@@ -155,7 +155,7 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Unary function `print` expected one paremters (got %d)", len(funcAppNode.Args))}
 		}
-		val, err := evalExpr(funcAppNode.Args[0], env, functions)
+		val, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -168,7 +168,7 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Unary function `length` expected one paremters (got %d)", len(funcAppNode.Args))}
 		}
-		val, err := evalExpr(funcAppNode.Args[0], env, functions)
+		val, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -184,7 +184,7 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Function `insert` expected 3 paremters (got %d)", len(funcAppNode.Args))}
 		}
-		insertIndexVal, err := evalExpr(funcAppNode.Args[0], env, functions)
+		insertIndexVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -192,11 +192,11 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Function `insert` expected first argument (index) to be a number (got %s)", insertIndexVal.Kind)}
 		}
-		valToInsert, err := evalExpr(funcAppNode.Args[1], env, functions)
+		valToInsert, err := evalulator.evalExpr(funcAppNode.Args[1], env)
 		if err != nil {
 			return Value{}, err
 		}
-		list, err := evalExpr(funcAppNode.Args[2], env, functions)
+		list, err := evalulator.evalExpr(funcAppNode.Args[2], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -223,7 +223,7 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Function `nth` expected 2 paremters (got %d)", len(funcAppNode.Args))}
 		}
-		indexToGetVal, err := evalExpr(funcAppNode.Args[0], env, functions)
+		indexToGetVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -231,7 +231,7 @@ func EvalBuiltin(funcAppNode ast.FunctionApplicationExpr, env Env, functions map
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Function `nth` expected first argument (index) to be a number (got %s)", indexToGetVal.Kind)}
 		}
-		list, err := evalExpr(funcAppNode.Args[1], env, functions)
+		list, err := evalulator.evalExpr(funcAppNode.Args[1], env)
 		if err != nil {
 			return Value{}, err
 		}

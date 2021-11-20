@@ -9,9 +9,15 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
+// Information used for evalulation that is not scoped
+type Evalulator struct {
+	GlobalVariables map[string]Value
+	Functions       map[string]*ast.FuncDefStmt
+}
+
+// Information scoped by function/closure
 type Env struct {
 	Variables map[string]Value
-	Functions map[string]ast.FuncDefStmt
 }
 
 func (env *Env) New() {
@@ -114,43 +120,76 @@ type EvalResult struct {
 	Variables map[string]*ast.VarDefStmt
 }
 
+// Construct global state for evalulator
+// Global variables are evaul'd before anything else
+func (evalulator *Evalulator) InitGlobalState(astResult ast.AstResult) error {
+	evalulator.Functions = astResult.Functions
+	evalulator.GlobalVariables = make(map[string]Value)
+	for identifier, varDef := range astResult.GlobalVariables {
+		varEnv := Env{}
+		varEnv.New()
+		val, err := evalulator.evalExpr(varDef.Value, varEnv)
+		if err != nil {
+			return err
+		}
+		evalulator.GlobalVariables[identifier] = val
+	}
+	return nil
+}
+
+// Update the global state. Don't delete any existing items
+// Useful for the REPL
+func (evalulator *Evalulator) UpdateGlobalState(astResult ast.AstResult) error {
+	if evalulator.Functions == nil {
+		evalulator.Functions = make(map[string]*ast.FuncDefStmt)
+	}
+	for id, function := range astResult.Functions {
+		evalulator.Functions[id] = function
+	}
+	if evalulator.GlobalVariables == nil {
+		evalulator.GlobalVariables = make(map[string]Value)
+	}
+	for identifier, varDef := range astResult.GlobalVariables {
+		varEnv := Env{}
+		varEnv.New()
+		val, err := evalulator.evalExpr(varDef.Value, varEnv)
+		if err != nil {
+			return err
+		}
+		evalulator.GlobalVariables[identifier] = val
+	}
+	return nil
+
+}
+
 // Evalulate a program
 // If a main function exists, it executes it and returns the result of the main function
 // Otherwise, it evaluates every ast in turn and returns the value of the final expression/statement
-func EvalProgram(astResult ast.AstResult, programArgs []string) (Value, error) {
+func (evalulator Evalulator) EvalProgram(astResult ast.AstResult, programArgs []string) (Value, error) {
+	err := evalulator.UpdateGlobalState(astResult) // FIXME
+	if err != nil {
+		return Value{}, err
+	}
 	if len(astResult.Asts) == 0 {
 		return Value{}, errors.New("eval program requires non-zero numbers of asts")
 	}
+	env := Env{}
+	env.New()
 
 	// Search for main function
+	// A main function optionaly takes a list of strings for the program arguments
 	if mainFunc, ok := astResult.Functions["main"]; ok {
 		if len(mainFunc.Args) >= 2 {
 			return Value{}, types.Error{Range: mainFunc.Range, Simple: "Main function must take either zero arguments or one argument (for args)"}
 		}
 
 		// To call main, all we do is construct a fake main() call (with or without arguments, depending on definition)
-		argList := []ast.Expr{}
-		if len(mainFunc.Args) == 1 {
-			argsExprs := []ast.Expr{}
-			for _, arg := range programArgs {
-				argsExprs = append(argsExprs, ast.StringExpr{Value: arg})
-			}
-			argList = append(argList, ast.ListExpr{Value: argsExprs})
-		}
-
-		funcAppExpr := ast.FunctionApplicationExpr{
-			Range: types.FileRange{Start: types.FilePos{Line: 0, Col: 0, Position: 0}, End: types.FilePos{Line: 0, Col: 0, Position: 0}},
-			Args:  argList,
-		}
-		env := Env{}
-		env.New()
-		return evalFunctionApplication(funcAppExpr, *mainFunc, env, astResult.Functions)
+		funcAppExpr := evalulator.constructMainFunction(*mainFunc, programArgs)
+		return evalulator.evalFunctionApplication(funcAppExpr, *mainFunc, env)
 	}
-	env := Env{}
-	env.New()
-
+	// If no main function is defined, just evalute each statement/expression one by one
 	for i, ast := range astResult.Asts {
-		result, err := Eval(ast, &env, astResult.Functions)
+		result, err := evalulator.Eval(ast, &env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -161,9 +200,27 @@ func EvalProgram(astResult ast.AstResult, programArgs []string) (Value, error) {
 	return Value{}, errors.New("unknown error?")
 }
 
-func Eval(astNode ast.Ast, env *Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+func (evalulator Evalulator) constructMainFunction(mainFunc ast.FuncDefStmt, programArgs []string) ast.FunctionApplicationExpr {
+	argList := []ast.Expr{}
+	if len(mainFunc.Args) == 1 {
+		argsExprs := []ast.Expr{}
+		for _, arg := range programArgs {
+			argsExprs = append(argsExprs, ast.StringExpr{Value: arg})
+		}
+		argList = append(argList, ast.ListExpr{Value: argsExprs})
+	}
+
+	funcAppExpr := ast.FunctionApplicationExpr{
+		Range: types.FileRange{Start: types.FilePos{Line: 0, Col: 0, Position: 0}, End: types.FilePos{Line: 0, Col: 0, Position: 0}},
+		Args:  argList,
+	}
+
+	return funcAppExpr
+}
+
+func (evalulator Evalulator) Eval(astNode ast.Ast, env *Env) (Value, error) {
 	if astNode.Kind == ast.StmtType {
-		err := evalStmt(astNode.Statement, env, functions)
+		err := evalulator.evalStmt(astNode.Statement, env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -171,7 +228,7 @@ func Eval(astNode ast.Ast, env *Env, functions map[string]*ast.FuncDefStmt) (Val
 		return Value{Kind: NullType}, nil
 	}
 	if astNode.Kind == ast.ExprType {
-		val, err := evalExpr(astNode.Expression, *env, functions)
+		val, err := evalulator.evalExpr(astNode.Expression, *env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -180,10 +237,10 @@ func Eval(astNode ast.Ast, env *Env, functions map[string]*ast.FuncDefStmt) (Val
 	return Value{}, errors.New("?")
 }
 
-func evalStmt(node ast.Stmt, env *Env, functions map[string]*ast.FuncDefStmt) error {
+func (evalulator Evalulator) evalStmt(node ast.Stmt, env *Env) error {
 	switch stmtNode := node.(type) {
 	case ast.VarDefStmt:
-		result, err := evalExpr(stmtNode.Value, *env, functions)
+		result, err := evalulator.evalExpr(stmtNode.Value, *env)
 		if err != nil {
 			return err
 		}
@@ -191,7 +248,7 @@ func evalStmt(node ast.Stmt, env *Env, functions map[string]*ast.FuncDefStmt) er
 	case ast.FuncDefStmt:
 		// NOP - already handled by AST
 	case ast.WhileStmt:
-		cond, err := evalExpr(stmtNode.Condition, *env, functions)
+		cond, err := evalulator.evalExpr(stmtNode.Condition, *env)
 		if err != nil {
 			return err
 		}
@@ -201,9 +258,9 @@ func evalStmt(node ast.Stmt, env *Env, functions map[string]*ast.FuncDefStmt) er
 		}
 		for cond.Bool {
 			for _, ast := range stmtNode.Body {
-				Eval(ast, env, functions)
+				evalulator.Eval(ast, env)
 			}
-			cond, err = evalExpr(stmtNode.Condition, *env, functions)
+			cond, err = evalulator.evalExpr(stmtNode.Condition, *env)
 			if err != nil {
 				return err
 			}
@@ -218,7 +275,7 @@ func evalStmt(node ast.Stmt, env *Env, functions map[string]*ast.FuncDefStmt) er
 	return nil
 }
 
-func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+func (evalulator Evalulator) evalExpr(node ast.Expr, env Env) (Value, error) {
 	switch exprNode := node.(type) {
 	case ast.NumberExpr:
 		val := Value{}
@@ -239,7 +296,7 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 	case ast.ListExpr:
 		val := Value{Kind: ListType, List: make([]Value, len(exprNode.Value))}
 		for i, expr := range exprNode.Value {
-			itemValue, err := evalExpr(expr, env, functions)
+			itemValue, err := evalulator.evalExpr(expr, env)
 			if err != nil {
 				return Value{}, err
 			}
@@ -247,14 +304,14 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 		}
 		return val, nil
 	case ast.VarUseExpr:
-		if val, ok := env.Variables[exprNode.Identifier]; ok {
+		if val, ok := evalulator.lookupVariable(exprNode.Identifier, env); ok {
 			return val, nil
 		} else {
 			return Value{}, types.Error{Range: exprNode.Range,
 				Simple: fmt.Sprintf("Undeclared variable %s", exprNode.Identifier)}
 		}
 	case ast.IfElseExpr:
-		condRes, err := evalExpr(exprNode.Condition, env, functions)
+		condRes, err := evalulator.evalExpr(exprNode.Condition, env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -267,7 +324,7 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 			branch = exprNode.ElseBranch
 		}
 		for i, ast := range branch {
-			evalResult, err := Eval(ast, &env, functions)
+			evalResult, err := evalulator.Eval(ast, &env)
 			if err != nil {
 				return Value{}, err
 			}
@@ -276,7 +333,7 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 			}
 		}
 	case ast.IfOnlyExpr:
-		condRes, err := evalExpr(exprNode.Condition, env, functions)
+		condRes, err := evalulator.evalExpr(exprNode.Condition, env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -290,7 +347,7 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 			return val, nil
 		}
 		for i, ast := range exprNode.IfBranch {
-			evalResult, err := Eval(ast, &env, functions)
+			evalResult, err := evalulator.Eval(ast, &env)
 			if err != nil {
 				return Value{}, err
 			}
@@ -309,7 +366,7 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 		value.NewClosure(exprNode.Args, exprNode.Body, closureEnv)
 		return value, nil
 	case ast.ClosureApplicationExpr:
-		closureVal, err := evalExpr(exprNode.Closure, env, functions)
+		closureVal, err := evalulator.evalExpr(exprNode.Closure, env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -320,27 +377,38 @@ func evalExpr(node ast.Expr, env Env, functions map[string]*ast.FuncDefStmt) (Va
 		if len(closure.Args) != len(exprNode.Args) {
 			return Value{}, types.Error{Range: exprNode.Range, Simple: fmt.Sprintf("Expected %d arguments to closure applicatoin, got %d", len(closure.Args), len(exprNode.Args))}
 		}
-		return evalClosure(closure, exprNode.Args, env, functions, exprNode.Range)
+		return evalulator.evalClosure(closure, exprNode.Args, env, exprNode.Range)
 	case ast.FunctionApplicationExpr:
 		// First look up in function defintions, then try builtins
-		if funcDef, ok := functions[exprNode.Identifier]; ok {
-			return evalFunctionApplication(exprNode, *funcDef, env, functions)
+		if funcDef, ok := evalulator.Functions[exprNode.Identifier]; ok {
+			return evalulator.evalFunctionApplication(exprNode, *funcDef, env)
 		} else {
 			// Try to look up variable instead
-			if val, ok := env.Variables[exprNode.Identifier]; ok {
+			if val, ok := evalulator.lookupVariable(exprNode.Identifier, env); ok {
 				if len(exprNode.Args) == 0 {
 					return val, nil
 				} else if val.Kind == ClosureType {
-					return evalClosure(val.Closure, exprNode.Args, env, functions, exprNode.Range)
+					return evalulator.evalClosure(val.Closure, exprNode.Args, env, exprNode.Range)
 				}
 			}
-			return EvalBuiltin(exprNode, env, functions)
+			return evalulator.EvalBuiltin(exprNode, env)
 		}
 	}
 	return Value{}, errors.New("?")
 }
 
-func evalFunctionApplication(funcAppNode ast.FunctionApplicationExpr, funcDef ast.FuncDefStmt, env Env, functions map[string]*ast.FuncDefStmt) (Value, error) {
+// Look up a variable in the environment and global namespace
+func (evalulator Evalulator) lookupVariable(identifier string, env Env) (Value, bool) {
+	if varDef, ok := env.Variables[identifier]; ok {
+		return varDef, true
+	}
+	if globalVarVal, ok := evalulator.GlobalVariables[identifier]; ok {
+		return globalVarVal, true
+	}
+	return Value{}, false
+}
+
+func (evalulator Evalulator) evalFunctionApplication(funcAppNode ast.FunctionApplicationExpr, funcDef ast.FuncDefStmt, env Env) (Value, error) {
 	if len(funcDef.Args) != len(funcAppNode.Args) {
 		return Value{}, types.Error{Range: funcAppNode.Range,
 			Simple: fmt.Sprintf("Bad funtion application - expected %d arguments but recieved %d", len(funcDef.Args), len(funcAppNode.Args))}
@@ -349,7 +417,7 @@ func evalFunctionApplication(funcAppNode ast.FunctionApplicationExpr, funcDef as
 	funcAppEnv.New()
 	for i, argName := range funcDef.Args {
 		argExpr := funcAppNode.Args[i]
-		argEvalValue, err := evalExpr(argExpr, env, functions)
+		argEvalValue, err := evalulator.evalExpr(argExpr, env)
 		if err != nil {
 			return Value{}, err
 		}
@@ -357,7 +425,7 @@ func evalFunctionApplication(funcAppNode ast.FunctionApplicationExpr, funcDef as
 		funcAppEnv.Variables[argName] = argEvalValue
 	}
 	for i, funcDefAst := range funcDef.Body {
-		evalResult, err := Eval(funcDefAst, &funcAppEnv, functions)
+		evalResult, err := evalulator.Eval(funcDefAst, &funcAppEnv)
 		if err != nil {
 			return Value{}, err
 		}
@@ -368,7 +436,7 @@ func evalFunctionApplication(funcAppNode ast.FunctionApplicationExpr, funcDef as
 	return Value{}, errors.New("?????")
 }
 
-func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, functions map[string]*ast.FuncDefStmt, cRange types.FileRange) (Value, error) {
+func (evalulator Evalulator) evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, cRange types.FileRange) (Value, error) {
 	// Closure method application
 	if len(closureDef.Args) != len(args) {
 		return Value{}, types.Error{Range: cRange,
@@ -384,14 +452,14 @@ func evalClosure(closureDef ClosureValue, args []ast.Expr, env Env, functions ma
 	}
 	for i, argName := range closureDef.Args {
 		argExpr := args[i]
-		argEvalValue, err := evalExpr(argExpr, env, functions)
+		argEvalValue, err := evalulator.evalExpr(argExpr, env)
 		if err != nil {
 			return Value{}, err
 		}
 		closureEnv.Variables[argName] = argEvalValue
 	}
 	for i, closureAst := range closureDef.Body {
-		evalResult, err := Eval(closureAst, &closureEnv, functions)
+		evalResult, err := evalulator.Eval(closureAst, &closureEnv)
 		if err != nil {
 			return Value{}, err
 		}

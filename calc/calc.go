@@ -10,6 +10,7 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
+	"github.com/benbanerjeerichards/lisp-calculator/util"
 )
 
 func AnnotateError(code string, error types.Error) string {
@@ -42,7 +43,8 @@ func ParseAndEval(code string, programArgs []string) (eval.Value, error) {
 	if err != nil {
 		return eval.Value{}, err
 	}
-	evalResult, err := eval.EvalProgram(ast, programArgs)
+	evalulator := eval.Evalulator{}
+	evalResult, err := evalulator.EvalProgram(ast, programArgs)
 	if err != nil {
 		return eval.Value{}, err
 	}
@@ -68,10 +70,8 @@ func Ast(code string) (ast.AstResult, error) {
 
 func RunRepl() {
 	reader := bufio.NewReader(os.Stdin)
-	env := eval.Env{}
-	env.New()
+	evalutor := eval.Evalulator{}
 	astConstruct := ast.AstConstructor{}
-	// Otherwise really annoying
 	astConstruct.AllowFunctionRedeclaration = true
 	astConstruct.New()
 
@@ -81,48 +81,56 @@ func RunRepl() {
 		text = text[:len(text)-1]
 		if strings.HasPrefix(text, ":l") {
 			// Load file into REPL environment
-			parts := strings.Split(text, ":l")
+			parts := strings.Split(text, ":l ")
 			if len(parts) <= 1 {
 				fmt.Println("Incorrect format for load command. Expected :l <path>")
 				continue
 			}
-			// fileContents, err := util.ReadFile(parts[1])
-			// if err != nil {
-			// 	fmt.Println("Failed to load file", parts[1])
-			// 	continue
-			// }
-			// env, err := ParseAndEval(fileContents)
-			// if err != nil {
-			// 	fmt.Println("Failed to parse and evalulate file")
-			// 	if astError, ok := err.(types.Error); ok {
-			// 		fmt.Println(AnnotateError(fileContents, astError))
-			// 	} else {
-			// 		fmt.Println(err)
-			// 	}
-			// 	continue
-			// }
-			// Update our REPL environment with the new environment
-		}
-		tokens := parser.Tokenise(text)
-		parser := parser.Parser{}
-		parser.New(tokens)
-		expr, err := parser.ParseExpression()
-		if err != nil {
-			fmt.Println("Parse Error: ", err.Error())
+			fileContents, err := util.ReadFile(parts[1])
+			fmt.Println(parts[1])
+			if err != nil {
+				fmt.Println("Failed to load file", parts[1])
+				continue
+			}
+
+			fileAst, err := Ast(fileContents)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			err = evalutor.UpdateGlobalState(fileAst)
+			if err != nil {
+				fmt.Println("Failed to initialize global state", err)
+			}
 			continue
 		}
-		asts, err := astConstruct.CreateAst(expr)
-		for _, ast := range asts.Asts {
-			if err != nil {
-				fmt.Println("Ast Error: ", err)
-				continue
-			}
-			val, err := eval.Eval(ast, &env, astConstruct.Functions)
-			if err != nil {
-				fmt.Println("Eval Error: ", err.Error())
-				continue
-			}
-			fmt.Println(val.ToString())
+		val, err := runInRepl(text, &evalutor, &astConstruct)
+		if err != nil {
+			fmt.Println(err)
+			continue
 		}
+		fmt.Println(val.ToString())
 	}
+}
+
+func runInRepl(code string, evalulator *eval.Evalulator, astConstruct *ast.AstConstructor) (eval.Value, error) {
+	tokens := parser.Tokenise(code)
+	parser := parser.Parser{}
+	parser.New(tokens)
+	expr, err := parser.ParseProgram()
+	if err != nil {
+		return eval.Value{}, err
+	}
+
+	ast, err := astConstruct.CreateAst(expr)
+	if err != nil {
+		return eval.Value{}, err
+	}
+
+	val, err := evalulator.EvalProgram(ast, []string{})
+	if err != nil {
+		return eval.Value{}, err
+	}
+	return val, nil
+
 }

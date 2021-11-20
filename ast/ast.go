@@ -292,6 +292,10 @@ func (constructor *AstConstructor) CreateAstItem(node parser.Node) (Ast, error) 
 	return constructor.createAstItem(node, false)
 }
 
+func (constructor *AstConstructor) CreateRootAstItem(node parser.Node) (Ast, error) {
+	return constructor.createAstItem(node, true)
+}
+
 func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, error) {
 	switch node.Kind {
 	case parser.NumberNode:
