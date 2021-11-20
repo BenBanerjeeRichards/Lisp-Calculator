@@ -247,6 +247,10 @@ func (evalulator Evalulator) evalStmt(node ast.Stmt, env *Env) error {
 		env.Variables[stmtNode.Identifier] = result
 	case ast.FuncDefStmt:
 		// NOP - already handled by AST
+		break
+	case ast.ImportStmt:
+		// NOP - already handled by AST
+		break
 	case ast.WhileStmt:
 		cond, err := evalulator.evalExpr(stmtNode.Condition, *env)
 		if err != nil {

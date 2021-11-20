@@ -140,7 +140,24 @@ func (r *Runner) ExpectNull(code string) bool {
 	}
 	r.numFailed += 1
 	return false
+}
 
+func (r *Runner) ExepctError(code string) bool {
+	asts, err := calc.Ast(code)
+	if err != nil {
+		r.numPassed += 1
+		return true
+	}
+	evalulator := eval.Evalulator{}
+	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
+	if err != nil {
+		r.numPassed += 1
+		return true
+	}
+
+	r.numFailed += 1
+	fmt.Printf("Failed: %s\nReason: Expected an error but code evalulated successfully to %v\n", code, evalResult)
+	return false
 }
 
 func (r *Runner) ExpectTokens(code string, expected []parser.Token) bool {
@@ -421,6 +438,11 @@ func Run() {
 	(def aGlobalVariable 100)
 	(defun main () (aGlobalVariable))
 	`, 100)
+
+	// Imports eval to null
+	r.ExepctError("(import) (10)")
+	r.ExpectNull(`(import "hello")`)
+	r.ExpectNull(`(import "hello" "world")`)
 
 	fmt.Print("\033[1m")
 	r.printSummary()

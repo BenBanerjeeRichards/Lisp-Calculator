@@ -27,192 +27,33 @@ const (
 	StmtType = "StmtType"
 )
 
-type Ast struct {
-	Expression Expr
-	Statement  Stmt
-	Kind       string
-}
-
-type VarDefStmt struct {
-	Identifier string
-	Value      Expr
-	Range      types.FileRange
-}
-
-type FuncDefStmt struct {
-	Identifier string
-	Args       []string
-	Body       []Ast
-	Range      types.FileRange
-}
-
-type VarUseExpr struct {
-	Identifier string
-	Range      types.FileRange
-}
-
-type FunctionApplicationExpr struct {
-	Identifier string
-	Args       []Expr
-	Range      types.FileRange
-}
-
-type ClosureApplicationExpr struct {
-	Closure Expr
-	Args    []Expr
-	Range   types.FileRange
-}
-
-type ClosureDefExpr struct {
-	Args  []string
-	Body  []Ast
-	Range types.FileRange
-}
-
-type NumberExpr struct {
-	Value float64
-	Range types.FileRange
-}
-
-type StringExpr struct {
-	Value string
-	Range types.FileRange
-}
-type BoolExpr struct {
-	Value bool
-	Range types.FileRange
-}
-
-type NullExpr struct {
-	Range types.FileRange
-}
-
-type ListExpr struct {
-	Value []Expr
-	Range types.FileRange
-}
-
-type IfElseExpr struct {
-	Condition  Expr
-	IfBranch   []Ast
-	ElseBranch []Ast
-	Range      types.FileRange
-}
-
-type IfOnlyExpr struct {
-	Condition Expr
-	IfBranch  []Ast
-	Range     types.FileRange
-}
-
-type WhileStmt struct {
-	Condition Expr
-	Body      []Ast
-	Range     types.FileRange
-}
-
-func (v VarDefStmt) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v FuncDefStmt) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v VarUseExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v FunctionApplicationExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v NumberExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v StringExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v BoolExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v NullExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v ListExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v IfElseExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v IfOnlyExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v WhileStmt) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v ClosureDefExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-func (v ClosureApplicationExpr) GetRange() types.FileRange {
-	return v.Range
-}
-
-// These are just to prevent assigning a statement to an expression
-// Same as what go compiler does
-func (FunctionApplicationExpr) exprType() {}
-func (NumberExpr) exprType()              {}
-func (VarUseExpr) exprType()              {}
-func (BoolExpr) exprType()                {}
-func (IfElseExpr) exprType()              {}
-func (IfOnlyExpr) exprType()              {}
-func (StringExpr) exprType()              {}
-func (ListExpr) exprType()                {}
-func (NullExpr) exprType()                {}
-func (ClosureDefExpr) exprType()          {}
-func (ClosureApplicationExpr) exprType()  {}
-
-func (VarDefStmt) stmtType()  {}
-func (FuncDefStmt) stmtType() {}
-func (WhileStmt) stmtType()   {}
-
-func (ast *Ast) newStatement(stmt Stmt) {
-	ast.Kind = StmtType
-	ast.Statement = stmt
-}
-
-func (ast *Ast) newExpression(expr Expr) {
-	// Keep track of declared functions. This is needed to differentiate between function application
-	// and variable usage
-	ast.Kind = ExprType
-	ast.Expression = expr
-}
-
 type AstConstructor struct {
 	AllowFunctionRedeclaration bool
 	Functions                  map[string]*FuncDefStmt
 	GlobalVariables            map[string]*VarDefStmt
+	Imports                    []Import
 }
 
 func (constructor *AstConstructor) New() {
 	constructor.Functions = make(map[string]*FuncDefStmt)
 	constructor.GlobalVariables = make(map[string]*VarDefStmt)
+	constructor.Imports = make([]Import, 0)
 	constructor.AllowFunctionRedeclaration = false
+}
+
+type Import struct {
+	// Path to file to import into current file
+	Path string
+	// Optional qualifier (may be empty). If set, will qualify all imports by this (e.g. qualifier.symbol)
+	Qualifier string
+	Range     types.FileRange
 }
 
 type AstResult struct {
 	Asts            []Ast
 	GlobalVariables map[string]*VarDefStmt
 	Functions       map[string]*FuncDefStmt
+	Imports         []Import
 }
 
 func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstResult, error) {
@@ -220,7 +61,7 @@ func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstRes
 	if err != nil {
 		return AstResult{}, nil
 	}
-	return AstResult{Asts: asts, GlobalVariables: constructor.GlobalVariables, Functions: constructor.Functions}, nil
+	return AstResult{Asts: asts, GlobalVariables: constructor.GlobalVariables, Functions: constructor.Functions, Imports: constructor.Imports}, nil
 }
 
 func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]Ast, error) {
@@ -268,7 +109,7 @@ func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
 }
 
 func (constructor *AstConstructor) createAstItem(node parser.Node, isRoot bool) (Ast, error) {
-	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while") {
+	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while" || val == "import") {
 		varDefStmt, err := constructor.createAstStatement(node, isRoot)
 		if err != nil {
 			return Ast{}, err
@@ -290,10 +131,6 @@ func (constructor *AstConstructor) createAstItem(node parser.Node, isRoot bool) 
 
 func (constructor *AstConstructor) CreateAstItem(node parser.Node) (Ast, error) {
 	return constructor.createAstItem(node, false)
-}
-
-func (constructor *AstConstructor) CreateRootAstItem(node parser.Node) (Ast, error) {
-	return constructor.createAstItem(node, true)
 }
 
 func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, error) {
@@ -578,12 +415,33 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 		return funcDefStmt, nil
 	} else if literal == "while" {
 		return constructor.createWhileLoop(node)
+	} else if literal == "import" {
+		return constructor.handleImport(node)
 	}
 	return nil, types.Error{
 		Simple: "Parse error",
 		Detail: fmt.Sprintf("Failed to process node - %s", node.Kind),
 		Range:  node.Range,
 	}
+}
+
+func (constructor *AstConstructor) handleImport(node parser.Node) (Stmt, error) {
+	importAst := Import{Range: node.Range}
+
+	path, ok := safeTraverse(node, []int{1, 0})
+	if !ok {
+		return nil, types.Error{Range: node.Range, Simple: "Invalid import - must include path as second element in statement"}
+	}
+	importAst.Path = path.Data
+
+	qualifier, ok := safeTraverse(node, []int{2, 0})
+	qualifierString := ""
+	if ok {
+		qualifierString = qualifier.Data
+	}
+	importAst.Qualifier = qualifierString
+	constructor.Imports = append(constructor.Imports, importAst)
+	return ImportStmt{Range: node.Range}, nil
 }
 
 // Function body

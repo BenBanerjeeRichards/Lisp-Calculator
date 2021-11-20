@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
@@ -74,9 +75,15 @@ func RunRepl() {
 	astConstruct := ast.AstConstructor{}
 	astConstruct.AllowFunctionRedeclaration = true
 	astConstruct.New()
+	loadedReplFilePath := ""
+	loadedReplFileName := ""
 
 	for {
-		fmt.Print("calc> ")
+		if len(loadedReplFilePath) > 0 {
+			fmt.Printf("%s> ", loadedReplFileName)
+		} else {
+			fmt.Print("calc> ")
+		}
 		text, _ := reader.ReadString('\n')
 		text = text[:len(text)-1]
 		if strings.HasPrefix(text, ":l") {
@@ -86,22 +93,25 @@ func RunRepl() {
 				fmt.Println("Incorrect format for load command. Expected :l <path>")
 				continue
 			}
-			fileContents, err := util.ReadFile(parts[1])
-			fmt.Println(parts[1])
-			if err != nil {
-				fmt.Println("Failed to load file", parts[1])
-				continue
-			}
-
-			fileAst, err := Ast(fileContents)
+			err := loadFileIntoRepl(parts[1], &evalutor)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			err = evalutor.UpdateGlobalState(fileAst)
-			if err != nil {
-				fmt.Println("Failed to initialize global state", err)
+
+			loadedReplFilePath = parts[1]
+			loadedReplFileName = filepath.Base(parts[1])
+			continue
+		}
+		if strings.HasPrefix(text, ":r") {
+			if len(loadedReplFilePath) == 0 {
+				fmt.Println("No file loaded into REPL")
+				continue
 			}
+			// Clear evalulator context
+			evalutor = eval.Evalulator{}
+			loadFileIntoRepl(loadedReplFilePath, &evalutor)
+			fmt.Println("Reloaded")
 			continue
 		}
 		val, err := runInRepl(text, &evalutor, &astConstruct)
@@ -111,6 +121,23 @@ func RunRepl() {
 		}
 		fmt.Println(val.ToString())
 	}
+}
+
+func loadFileIntoRepl(path string, evalulator *eval.Evalulator) error {
+	fileContents, err := util.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("Failed to load file - %s", path)
+	}
+
+	fileAst, err := Ast(fileContents)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = evalulator.UpdateGlobalState(fileAst)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func runInRepl(code string, evalulator *eval.Evalulator, astConstruct *ast.AstConstructor) (eval.Value, error) {
