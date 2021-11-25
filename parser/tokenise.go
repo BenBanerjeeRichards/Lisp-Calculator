@@ -142,9 +142,33 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 			if nextChar == eof {
 				panic("TODO proper error handling") //FIXME
 			}
-			if nextChar == '\\' && t.Peek(1) == '"' {
-				stringLit.WriteByte('"')
-				t.nextChar()
+			if nextChar == '\\' {
+				switch t.Peek(1) {
+				case 'n':
+					stringLit.WriteByte('\n')
+					t.nextChar()
+				case 'r':
+					stringLit.WriteByte('\r')
+					t.nextChar()
+				case 't':
+					stringLit.WriteByte('\t')
+					t.nextChar()
+				case '\\':
+					stringLit.WriteByte('\\')
+					t.nextChar()
+				case 'f':
+					stringLit.WriteByte('\f')
+					t.nextChar()
+				case 'b':
+					stringLit.WriteByte('\b')
+					t.nextChar()
+				case '"':
+					stringLit.WriteByte('"')
+					t.nextChar()
+				default:
+					stringLit.WriteByte(nextChar)
+				}
+
 			} else {
 				stringLit.WriteByte(nextChar)
 			}

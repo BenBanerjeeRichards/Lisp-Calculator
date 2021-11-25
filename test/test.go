@@ -211,6 +211,7 @@ func Run() {
 	r.ExpectTokens("+", []parser.Token{mkToken(parser.TokIdent, "+")})
 	r.ExpectTokens(`"te"`, []parser.Token{mkToken(parser.TokString, "te")})
 	r.ExpectTokens(`"hello \" world"`, []parser.Token{mkToken(parser.TokString, "hello \" world")})
+	r.ExpectTokens("\"\n\"", []parser.Token{mkToken(parser.TokString, "\n")})
 
 	r.ExpectNumber("(5)", 5)
 	r.ExpectNumber("(5.5)", 5.5)
@@ -241,6 +242,18 @@ func Run() {
 	r.ExpectBool("(<= 10 10)", true)
 	r.ExpectBool("(<= 5 10)", true)
 	r.ExpectBool("(<= 10 5)", false)
+
+	// Boolean logic
+	r.ExpectBool("(not false)", true)
+	r.ExpectBool("(not true)", false)
+	r.ExpectBool("(and true false)", false)
+	r.ExpectBool("(and false true)", false)
+	r.ExpectBool("(and true true)", true)
+	r.ExpectBool("(and false false)", false)
+	r.ExpectBool("(or true false)", true)
+	r.ExpectBool("(or false true)", true)
+	r.ExpectBool("(or true true)", true)
+	r.ExpectBool("(or false false)", false)
 
 	// Eqality
 	r.ExpectBool("(= 10 10)", true)
@@ -443,6 +456,13 @@ func Run() {
 	r.ExepctError("(import) (10)")
 	r.ExpectNull(`(import "hello")`)
 	r.ExpectNull(`(import "hello" "world")`)
+	r.ExpectNull(`(import "hello" "world" "another")`)
+
+	// Panic
+	r.ExepctError(`(panic "error!")`)
+
+	// Concat
+	r.ExpectString(`(concat "Hello " "World")`, "Hello World")
 
 	fmt.Print("\033[1m")
 	r.printSummary()

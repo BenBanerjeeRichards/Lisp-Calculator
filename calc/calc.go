@@ -44,6 +44,7 @@ func ParseAndEval(code string, programArgs []string) (eval.Value, error) {
 	if err != nil {
 		return eval.Value{}, err
 	}
+	fmt.Println("ast", ast.Asts, len(ast.Asts))
 	evalulator := eval.Evalulator{}
 	evalResult, err := evalulator.EvalProgram(ast, programArgs)
 	if err != nil {
@@ -110,7 +111,11 @@ func RunRepl() {
 			}
 			// Clear evalulator context
 			evalutor = eval.Evalulator{}
-			loadFileIntoRepl(loadedReplFilePath, &evalutor)
+			err := loadFileIntoRepl(loadedReplFilePath, &evalutor)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
 			fmt.Println("Reloaded")
 			continue
 		}
@@ -126,12 +131,12 @@ func RunRepl() {
 func loadFileIntoRepl(path string, evalulator *eval.Evalulator) error {
 	fileContents, err := util.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("Failed to load file - %s", path)
+		return fmt.Errorf("failed to load file - %s", path)
 	}
 
 	fileAst, err := Ast(fileContents)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
 	err = evalulator.UpdateGlobalState(fileAst)
 	if err != nil {

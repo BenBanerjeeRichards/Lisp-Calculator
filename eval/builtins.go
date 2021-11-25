@@ -144,12 +144,107 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		if err != nil {
 			return Value{}, nil
 		}
-		if lhsVal.Kind != rhsVal.Kind {
-			return Value{}, types.Error{Range: funcAppNode.Range, Simple: "Operand types to = are different"}
-		}
 		val := Value{}
 		val.NewBool(lhsVal.equals(rhsVal))
 		return val, nil
+	case "not":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Binary function `not` expected one parameter (got %d)", len(funcAppNode.Args))}
+		}
+		val, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if val.Kind != BoolType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function not can only be applied to type Bool (got %s)", val.Kind)}
+		}
+		val.NewBool(!val.Bool)
+		return val, nil
+	case "and":
+		if len(funcAppNode.Args) != 2 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Binary function `and` expected two parameters (got %d)", len(funcAppNode.Args))}
+		}
+		valLhs, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		valRhs, err := evalulator.evalExpr(funcAppNode.Args[1], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if valLhs.Kind != BoolType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function `and` LHS can only be applied to type Bool (got %s)", valLhs.Kind)}
+		}
+		if valRhs.Kind != BoolType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function `and` RHS can only be applied to type Bool (got %s)", valRhs.Kind)}
+		}
+		val := Value{}
+		val.NewBool(valRhs.Bool && valLhs.Bool)
+		return val, nil
+	case "or":
+		if len(funcAppNode.Args) != 2 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Binary function `or` expected two parameters (got %d)", len(funcAppNode.Args))}
+		}
+		valLhs, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		valRhs, err := evalulator.evalExpr(funcAppNode.Args[1], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if valLhs.Kind != BoolType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function `or` LHS can only be applied to type Bool (got %s)", valLhs.Kind)}
+		}
+		if valRhs.Kind != BoolType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function `or` RHS can only be applied to type Bool (got %s)", valRhs.Kind)}
+		}
+		val := Value{}
+		val.NewBool(valRhs.Bool || valLhs.Bool)
+		return val, nil
+	case "concat":
+		if len(funcAppNode.Args) != 2 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Binary function `concat` expected two parameters (got %d)", len(funcAppNode.Args))}
+		}
+		valLhs, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		valRhs, err := evalulator.evalExpr(funcAppNode.Args[1], env)
+		if err != nil {
+			return Value{}, err
+		}
+		val := Value{}
+		lString := valLhs.ToString()
+		if valLhs.Kind == StringType {
+			lString = valLhs.String
+		}
+		rString := valRhs.ToString()
+		if valRhs.Kind == StringType {
+			rString = valRhs.String
+		}
+
+		val.NewString(fmt.Sprintf("%s%s", lString, rString))
+		return val, nil
+
+	case "panic":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function `panic` expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		val, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if val.Kind != StringType {
+			return Value{}, types.Error{Range: funcAppNode.Range, Simple: fmt.Sprintf("Function not can only be applied to type String (got %s)", val.Kind)}
+		}
+		return Value{}, types.Error{Range: funcAppNode.Range,
+			Simple: fmt.Sprintf("%v panic - %s", funcAppNode.Range, val.String)}
 	case "print":
 		if len(funcAppNode.Args) != 1 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
@@ -159,7 +254,11 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		if err != nil {
 			return Value{}, err
 		}
-		fmt.Println(val.ToString())
+		str := val.ToString()
+		if val.Kind == StringType {
+			str = val.String
+		}
+		fmt.Print(str)
 		ret := Value{}
 		ret.NewNull()
 		return ret, nil
