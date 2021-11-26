@@ -160,6 +160,20 @@ func (r *Runner) ExepctError(code string) bool {
 	return false
 }
 
+func (r *Runner) ExpectParseError(code string) bool {
+	tokens := parser.Tokenise(code)
+	p := parser.Parser{}
+	p.New(tokens)
+	_, err := p.ParseProgram()
+	if err == nil {
+		fmt.Printf("Failed: %s\nReason: Expected Parse error but code parsed successfully\n", code)
+		r.numFailed += 1
+		return false
+	}
+	r.numPassed += 1
+	return true
+}
+
 func (r *Runner) ExpectTokens(code string, expected []parser.Token) bool {
 	actual := parser.Tokenise(code)
 	if len(actual) != len(expected) {
@@ -223,6 +237,8 @@ func Run() {
 	r.ExpectNumber("(+ 5 (+ 3 6))", 14)
 	r.ExpectNumber("(+ (+ 10 20) (+ 3 6))", 39)
 	r.ExpectNumber("(+ (+ 10 20) 100)", 130)
+
+	r.ExpectParseError("(34")
 
 	r.ExpectString(`("Hello World")`, "Hello World")
 

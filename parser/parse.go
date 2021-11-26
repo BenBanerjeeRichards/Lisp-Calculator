@@ -61,7 +61,11 @@ func (p *Parser) New(tokens []Token) {
 
 func (p Parser) currentToken() (Token, error) {
 	if p.isEndOfInput() {
-		return Token{}, errors.New("end of input")
+		errRange := types.FileRange{Start: types.FilePos{Line: 0, Col: 0, Position: 0}, End: types.FilePos{Line: 0, Col: 0, Position: 0}}
+		if len(p.tokens) > 0 {
+			errRange = p.tokens[len(p.tokens)-1].Range
+		}
+		return Token{}, types.Error{Range: errRange, Simple: "Unexpected end of input"}
 	}
 	return p.tokens[p.currIndex], nil
 }
@@ -148,6 +152,9 @@ func (p *Parser) ParseExpression() (Node, error) {
 		token, tokError = p.currentToken()
 		rangeEnd = token.Range
 	}
+	if tokError != nil {
+		return Node{}, tokError
+	}
 	if err != nil {
 		return Node{}, nil
 	}
@@ -157,24 +164,21 @@ func (p *Parser) ParseExpression() (Node, error) {
 
 func (p *Parser) ParseProgram() (Node, error) {
 	expressions := []Node{}
-	for {
+	for !p.isEndOfInput() {
 		expr, err := p.ParseExpression()
 		if err != nil {
-			if p.isEndOfInput() {
-				eRange := types.FileRange{}
-				if len(expressions) == 0 {
-					zeroPos := types.FilePos{Line: 0, Col: 0, Position: 0}
-					eRange = types.FileRange{Start: zeroPos, End: zeroPos}
-				} else {
-					eRange = types.FileRange{Start: expressions[0].Range.Start, End: expressions[len(expressions)-1].Range.End}
-				}
-				prog := Node{Kind: ProgramNode, Children: expressions, Range: eRange}
-				return prog, nil
-			} else {
-				// Unexpected end of input
-				return Node{}, err
-			}
+			return Node{}, err
 		}
 		expressions = append(expressions, expr)
 	}
+	eRange := types.FileRange{}
+	if len(expressions) == 0 {
+		zeroPos := types.FilePos{Line: 0, Col: 0, Position: 0}
+		eRange = types.FileRange{Start: zeroPos, End: zeroPos}
+	} else {
+		eRange = types.FileRange{Start: expressions[0].Range.Start, End: expressions[len(expressions)-1].Range.End}
+	}
+	prog := Node{Kind: ProgramNode, Children: expressions, Range: eRange}
+	return prog, nil
+
 }

@@ -44,7 +44,6 @@ func ParseAndEval(code string, programArgs []string) (eval.Value, error) {
 	if err != nil {
 		return eval.Value{}, err
 	}
-	fmt.Println("ast", ast.Asts, len(ast.Asts))
 	evalulator := eval.Evalulator{}
 	evalResult, err := evalulator.EvalProgram(ast, programArgs)
 	if err != nil {
