@@ -262,7 +262,10 @@ func (evalulator Evalulator) evalStmt(node ast.Stmt, env *Env) error {
 		}
 		for cond.Bool {
 			for _, ast := range stmtNode.Body {
-				evalulator.Eval(ast, env)
+				_, err := evalulator.Eval(ast, env)
+				if err != nil {
+					return err
+				}
 			}
 			cond, err = evalulator.evalExpr(stmtNode.Condition, *env)
 			if err != nil {
