@@ -1,9 +1,7 @@
 package calc
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +10,7 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 	"github.com/benbanerjeerichards/lisp-calculator/util"
+	"github.com/c-bata/go-prompt"
 )
 
 func AnnotateError(code string, error types.Error) string {
@@ -68,9 +67,11 @@ func Ast(code string) (ast.AstResult, error) {
 	}
 	return astTree, nil
 }
+func completer(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{}
+}
 
 func RunRepl() {
-	reader := bufio.NewReader(os.Stdin)
 	evalutor := eval.Evalulator{}
 	astConstruct := ast.AstConstructor{}
 	astConstruct.AllowFunctionRedeclaration = true
@@ -78,14 +79,17 @@ func RunRepl() {
 	loadedReplFilePath := ""
 	loadedReplFileName := ""
 
+	history := make([]string, 0)
 	for {
+		promptText := "calc> "
 		if len(loadedReplFilePath) > 0 {
-			fmt.Printf("%s> ", loadedReplFileName)
-		} else {
-			fmt.Print("calc> ")
+			promptText = fmt.Sprintf("%s> ", loadedReplFileName)
 		}
-		text, _ := reader.ReadString('\n')
-		text = text[:len(text)-1]
+		text := prompt.Input(promptText, completer, prompt.OptionHistory(history), prompt.OptionPrefixTextColor(prompt.DarkRed))
+		history = append(history, text)
+		if strings.HasPrefix(text, ":q") {
+			break
+		}
 		if strings.HasPrefix(text, ":l") {
 			// Load file into REPL environment
 			parts := strings.Split(text, ":l ")
