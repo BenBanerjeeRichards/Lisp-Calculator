@@ -166,6 +166,62 @@
 (defun first (items) (nth 0 items))
 (defun second (items) (nth 1 items))
 
+(defun charToNum (char) 
+    (def code (ord char))
+    (if (or (> code 58) (< code 48))
+        (panic (concatAll (list "charToNum - `" char "` is not a valid digit")))
+        (- code 48)) 
+)
+
+(defun testCharToNum ()
+    (assertEq 5 (charToNum "5") "charToNum1")
+    (assertEq 0 (charToNum "0") "charToNum2")
+    (assertEq 9 (charToNum "9") "charToNum3")
+)
+
+(defun strToNum (string)
+    (def parts (split string "."))
+    (if (> (length parts) 2)
+        (panic (concat "strToNum - invalid input" string)))
+    
+    (def whole 0)
+    (def i 0)
+    (def wholeStr (first parts))
+
+    (while (< i (length wholeStr))
+        (def digit 
+            (charToNum 
+                (nth (- (- (length wholeStr) i) 1) wholeStr)))
+
+        (def whole (+ whole (
+            (* digit (^ 10 i)))))
+        (def i (+ i 1))
+    )
+
+    (if (= (length parts) 2)(
+        (def i 0)
+        (def fract 0)
+        (def fractStr (second parts))
+        (while (< i (length fractStr))
+            (def digit (charToNum (nth i fractStr)))
+            (def fi (+ i 1))
+            (def fract (+ fract (
+                (* digit (/ 1 (^ 10 fi)))
+            )))
+            (def i (+ i 1))
+        )
+        (+ whole fract))
+        (whole))
+)
+
+(defun testStrToNum ()
+    (assertEq 123 (strToNum "123") "strToNum1")
+    (assertEq 0 (strToNum "0") "strToNum2")
+    (assertEq 123.456 (strToNum "123.456") "strToNum3")
+    (assertEq 0.5 (strToNum "0.5") "strToNum4")
+    (assertEq  5.0 (strToNum "5.0") "strToNum5")
+)
+
 (defun test () 
     (testAppend)
     (testMap)
@@ -175,6 +231,8 @@
     (testRange)
     (testSubstr)
     (testSplit)
+    (testCharToNum)
+    (testStrToNum)
 )
 
 (defun main (args)

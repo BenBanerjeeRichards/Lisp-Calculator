@@ -282,6 +282,40 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 			lengthVal.NewNum(float64(len(val.String)))
 		}
 		return lengthVal, nil
+	case "chr":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function `chr` expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		codeVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if codeVal.Kind != NumType {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Function chr requires argument of type number (got %s)", codeVal.Kind)}
+		}
+
+		val := Value{}
+		val.NewString(string(int(codeVal.Num)))
+		return val, nil
+	case "ord":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function `ord` expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		codeVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if codeVal.Kind != StringType {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Function ord requires argument of type string (got %s)", codeVal.Kind)}
+		}
+
+		val := Value{}
+		val.NewNum(float64(int(codeVal.String[0])))
+		return val, nil
 	case "insert":
 		if len(funcAppNode.Args) != 3 {
 			return Value{}, types.Error{Range: funcAppNode.Range,

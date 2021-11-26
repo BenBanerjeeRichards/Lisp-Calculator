@@ -335,6 +335,9 @@ func Run() {
 	r.ExpectNull(`(nth 5 "abcd")`)
 	r.ExpectNull(`(nth -1 "abcd")`)
 
+	r.ExpectString("(chr 65)", "A")
+	r.ExpectNumber(`(ord "A")`, 65)
+
 	r.ExpectNull("(null)")
 
 	r.ExpectNumber("(def x 10)(x)", 10)
