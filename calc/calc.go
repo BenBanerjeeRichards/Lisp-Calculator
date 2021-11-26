@@ -19,7 +19,7 @@ func AnnotateError(code string, error types.Error) string {
 	// red := "\031[1m"
 	output := fmt.Sprintf("%s - %s(%s)\n", error.Range, error.Simple, error.Detail)
 	codeLines := strings.Split(code, "\n")
-	start := error.Range.Start.Line - 1
+	start := error.Range.Start.Line - 2
 	end := error.Range.End.Line + 1
 	if end > len(codeLines)-1 {
 		end = len(codeLines) - 1

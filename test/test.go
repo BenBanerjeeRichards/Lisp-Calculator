@@ -310,6 +310,8 @@ func Run() {
 	r.ExpectNumber("(length (list 1 2 3))", 3)
 	r.ExpectNumber("(length (list 1 null false))", 3)
 	r.ExpectNumber(`(length (list 1 (list 4 3 2 1 false "hello") 3))`, 3)
+	r.ExpectNumber(`(length "test")`, 4)
+	r.ExpectNumber(`(length "")`, 0)
 
 	// Insert into list
 	r.ExpectBool("(= (insert 0 10 (list 1 2 3)) (list 10 1 2 3))", true)
@@ -325,6 +327,13 @@ func Run() {
 	r.ExpectNull("(nth -1 (list 1 2 3))")
 	r.ExpectNull("(nth 4 (list 1 2 3))")
 	r.ExpectNull("(nth 40 (list 1 2 3))")
+
+	r.ExpectString(`(nth 0 "abcd")`, "a")
+	r.ExpectString(`(nth 2 "abcd")`, "c")
+	r.ExpectString(`(nth 3 "abcd")`, "d")
+	r.ExpectNull(`(nth 4 "abcd")`)
+	r.ExpectNull(`(nth 5 "abcd")`)
+	r.ExpectNull(`(nth -1 "abcd")`)
 
 	r.ExpectNull("(null)")
 

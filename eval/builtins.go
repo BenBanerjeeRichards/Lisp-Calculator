@@ -271,12 +271,16 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		if err != nil {
 			return Value{}, err
 		}
-		if val.Kind != ListType {
+		if val.Kind != ListType && val.Kind != StringType {
 			return Value{}, types.Error{Range: funcAppNode.Range,
-				Simple: fmt.Sprintf("Function length requires argument of type list (got %s)", val.Kind)}
+				Simple: fmt.Sprintf("Function length requires argument of type list or string(got %s)", val.Kind)}
 		}
 		lengthVal := Value{}
-		lengthVal.NewNum(float64(len(val.List)))
+		if val.Kind == ListType {
+			lengthVal.NewNum(float64(len(val.List)))
+		} else {
+			lengthVal.NewNum(float64(len(val.String)))
+		}
 		return lengthVal, nil
 	case "insert":
 		if len(funcAppNode.Args) != 3 {
@@ -330,21 +334,27 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 			return Value{}, types.Error{Range: funcAppNode.Range,
 				Simple: fmt.Sprintf("Function `nth` expected first argument (index) to be a number (got %s)", indexToGetVal.Kind)}
 		}
-		list, err := evalulator.evalExpr(funcAppNode.Args[1], env)
+		subject, err := evalulator.evalExpr(funcAppNode.Args[1], env)
 		if err != nil {
 			return Value{}, err
 		}
-		if list.Kind != ListType {
+		if subject.Kind != ListType && subject.Kind != StringType {
 			return Value{}, types.Error{Range: funcAppNode.Range,
-				Simple: fmt.Sprintf("Function `nth` expected second argument (list) to be a list (got %s)", list.Kind)}
+				Simple: fmt.Sprintf("Function `nth` expected second argument (list) to be a list (got %s)", subject.Kind)}
 		}
 		idx := int(indexToGetVal.Num)
-		if idx < 0 || idx >= len(list.List) {
+		if idx < 0 || (subject.Kind == ListType && idx >= len(subject.List)) || (subject.Kind == StringType && idx >= len(subject.String)) {
 			v := Value{}
 			v.NewNull()
 			return v, nil
 		}
-		return list.List[idx], nil
+		if subject.Kind == StringType {
+			c := subject.String[idx]
+			val := Value{}
+			val.NewString(string(c))
+			return val, nil
+		}
+		return subject.List[idx], nil
 	default:
 		return Value{}, types.Error{Simple: fmt.Sprintf("Unknown function %s", funcAppNode.Identifier), Range: funcAppNode.GetRange()}
 	}
