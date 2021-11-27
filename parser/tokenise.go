@@ -110,7 +110,19 @@ func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, types.File
 	return acc, types.FileRange{Start: start, End: t.currentPos()}
 }
 
+func (t *Tokeniser) consumeComment() {
+	if t.Current() != ';' {
+		return
+	}
+	for !t.isEOF() && t.Current() != '\n' {
+		t.nextChar()
+	}
+}
+
 func (t *Tokeniser) nextToken() (Token, bool) {
+	t.consumeComment()
+	t.consumeSpaces()
+	t.consumeComment()
 	t.consumeSpaces()
 	nextChar := t.Current()
 	start := t.currentPos()

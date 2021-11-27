@@ -3,24 +3,10 @@
         (printLn (concatAll (list "FAILED (" message ")" " Expected=" a " Actual=" b))))
 )
 
-(defun printLn (x) 
-    (print x)
-    (print "\n")
-)
-
-(defun concatAll (x) 
-    (reduce x "" 
-        (lambda (a b) (concat a b)))
-)
-
 (defun testConcatAll () 
     (assertEq ("hello world") (concatAll (list "hello" " " "world")) "testConcatAll1")
     (assertEq ("hellotruenull34") (concatAll (list "hello" true null 34)) "testConcatAll2")
     (assertEq ("hello(1 false \"world\")") (concatAll (list "hello" (list 1 false "world"))) "testConcatAll3")
-)
-
-(defun append (x xs)
-    (insert (length xs) x xs)
 )
 
 (defun testAppend () 
@@ -28,96 +14,26 @@
     (assertEq (list 3) (append 3 (list)) "append2")
 )
 
-(defun map (items f)
-    (def i 0)
-    (def resultList (list))
-    (while (< i (length items))
-        (def resultList (append 
-            (funcall f (nth i items))
-            resultList
-        ))
-        (def i (+ i 1))
-    )
-    (resultList)
-)
-
 (defun testMap () 
+    (def double (lambda (x) (* x 2)))
     (assertEq (list 2 4 6) (map (list 1 2 3) double) "map1")
     (assertEq (list) (map (list) double) "map2")
-)
-
-(defun filter (items f)
-    (def i 0)
-    (def resultList (list))
-    (while (< i (length items))
-        (def val (nth i items))
-        (if (funcall f val)
-            (def resultList (append val resultList))
-        )
-        (def i (+ i 1))
-    )
-    (resultList)
 )
 
 (defun testFilter () 
     (assertEq (list 1 2 3) (filter (list 1 2 3 4 5 6 7 8 9) (lambda (x) (<= x 3)))"filter1")
 )
 
-(defun reduce (items initial f)
-    (def i 0)
-    (def result (if (= null initial) (nth 0 items) (initial)))
-    (while (< i (length items))
-        (def val (nth i items))
-        (def result (funcall f result val))
-        (def i (+ i 1))
-    )
-    (result)
-)
+
 (defun testReduce () 
     (assertEq 6 (reduce (list 1 2 3) 0 (lambda (a b) (+ a b))) "reduce1")
     (assertEq 6 (reduce (list 1 2 3) 1 (lambda (a b) (* a b))) "reduce2")
-)
-
-(defun range (from to increment)
-    (if 
-        (and (= increment 0) (not (= from to)))
-        (panic "range will generate infinite list "))
-
-    (def rangeSign (< from to))
-    (def incrementSign (> increment 0))
-    (if 
-        (not (= rangeSign incrementSign))
-        (panic "range will generate infinite list "))
-
-    (def i from)
-    (def result (list))
-
-    (while (if (> increment 0) (< i to) (> i to))
-        (def result (append i result))
-        (def i (+ i increment))
-    )
-    (result)
 )
 
 (defun testRange ()
     (assertEq (list 1 2 3 4 5) (range 1 6 1) "range1")
     (assertEq (list 1 3 5) (range 1 6 2) "range2")
     (assertEq (list 5 4 3 2 1) (range 5 0 -1) "range3")
-)
-
-(defun substr (string from to)
-    (def to 
-    (if (>= to (length string))
-        (length string)
-        to))
-
-    (if (> from to) ("")
-        ((def result "")
-            (def i from)
-            (while (< i to)
-                (def result (concat result (nth i string)))
-                (def i (+ i 1)))
-            (result)))
 )
 
 (defun testSubstr () 
@@ -130,29 +46,6 @@
     (assertEq "a" (substr "abcd" 0 1) "substr7")
 )
 
-(defun split (string delim)
-    (def result (list))
-    (def acc "")
-    (def i 0)
-    (def n (length delim))
-
-    (while (< i (length string))
-        (def subDelim (substr string i (+ i n)))
-        (if (= subDelim delim)
-            (
-                (def result (append acc result))
-                (def acc "")
-                (def i (+ i n))
-            )
-            (
-                (def acc (concat acc (nth i string)))
-                (def i (+ i 1))
-            )))
-
-    (def result (append acc result))
-    (result)
-)
-
 (defun testSplit () 
     (assertEq (list "the" "quick" "brown" "fox") (split "the quick brown fox" " ") "split1")
     (assertEq (list "the" "quick" "brown" "fox" "") (split "the quick brown fox " " ") "split2")
@@ -163,55 +56,10 @@
     (assertEq (list "the quick brown fox") (split "the quick brown fox" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") "split5")
 )
 
-(defun first (items) (nth 0 items))
-(defun second (items) (nth 1 items))
-
-(defun charToNum (char) 
-    (def code (ord char))
-    (if (or (> code 58) (< code 48))
-        (panic (concatAll (list "charToNum - `" char "` is not a valid digit")))
-        (- code 48)) 
-)
-
 (defun testCharToNum ()
     (assertEq 5 (charToNum "5") "charToNum1")
     (assertEq 0 (charToNum "0") "charToNum2")
     (assertEq 9 (charToNum "9") "charToNum3")
-)
-
-(defun strToNum (string)
-    (def parts (split string "."))
-    (if (> (length parts) 2)
-        (panic (concat "strToNum - invalid input" string)))
-    
-    (def whole 0)
-    (def i 0)
-    (def wholeStr (first parts))
-
-    (while (< i (length wholeStr))
-        (def digit 
-            (charToNum 
-                (nth (- (- (length wholeStr) i) 1) wholeStr)))
-
-        (def whole (+ whole (
-            (* digit (^ 10 i)))))
-        (def i (+ i 1))
-    )
-
-    (if (= (length parts) 2)(
-        (def i 0)
-        (def fract 0)
-        (def fractStr (second parts))
-        (while (< i (length fractStr))
-            (def digit (charToNum (nth i fractStr)))
-            (def fi (+ i 1))
-            (def fract (+ fract (
-                (* digit (/ 1 (^ 10 fi)))
-            )))
-            (def i (+ i 1))
-        )
-        (+ whole fract))
-        (whole))
 )
 
 (defun testStrToNum ()
@@ -220,6 +68,13 @@
     (assertEq 123.456 (strToNum "123.456") "strToNum3")
     (assertEq 0.5 (strToNum "0.5") "strToNum4")
     (assertEq  5.0 (strToNum "5.0") "strToNum5")
+)
+
+(defun testContains ()
+    (assertEq true (contains (list 1 2 3) 3) "contains1")
+    (assertEq true (contains (list 1 2 3) 1) "contains2")
+    (assertEq false (contains (list 1 2 3) 5) "contains2")
+    (assertEq false (contains (list) 5) "contains4")
 )
 
 (defun test () 
@@ -233,11 +88,10 @@
     (testSplit)
     (testCharToNum)
     (testStrToNum)
+    (testContains)
 )
 
 (defun main (args)
     (test)
 )
 
-(def xs (list 1 2 3))
-(def double (lambda (x) (* x 2)))

@@ -6,6 +6,7 @@ import (
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
+	"github.com/benbanerjeerichards/lisp-calculator/util"
 )
 
 func (evalulator Evalulator) builtInBinaryOp(f func(float64, float64) float64, lhs ast.Expr, rhs ast.Expr, env Env) (Value, error) {
@@ -316,6 +317,27 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		val := Value{}
 		val.NewNum(float64(int(codeVal.String[0])))
 		return val, nil
+	case "readFile":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function `readFile` expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		pathVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if pathVal.Kind != StringType {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Function readFile requires argument of type string (got %s)", pathVal.Kind)}
+		}
+		contents, err := util.ReadFile(pathVal.String)
+		if err != nil {
+			return Value{}, types.Error{Range: funcAppNode.Args[0].GetRange(), Simple: fmt.Sprintf("Failed to read from file %s", pathVal.String)}
+		}
+		val := Value{}
+		val.NewString(contents)
+		return val, nil
+
 	case "insert":
 		if len(funcAppNode.Args) != 3 {
 			return Value{}, types.Error{Range: funcAppNode.Range,

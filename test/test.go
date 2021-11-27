@@ -492,6 +492,14 @@ func Run() {
 	// Concat
 	r.ExpectString(`(concat "Hello " "World")`, "Hello World")
 
+	// Comments
+	r.ExpectNumber(`
+	; Test comment string
+	(def x 20);
+	(def y 10); Inline comment example
+	 (x)
+	`, 20)
+
 	fmt.Print("\033[1m")
 	r.printSummary()
 	fmt.Print("\033[0m")

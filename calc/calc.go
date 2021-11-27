@@ -1,6 +1,7 @@
 package calc
 
 import (
+	_ "embed"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,9 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/util"
 	"github.com/c-bata/go-prompt"
 )
+
+//go:embed stdlib.lisp
+var stdlibCode string
 
 func AnnotateError(code string, error types.Error) string {
 	// reset := "\033[0m"
@@ -79,6 +83,11 @@ func RunRepl() {
 	loadedReplFilePath := ""
 	loadedReplFileName := ""
 
+	err := loadStdLib(&evalutor)
+	if err != nil {
+		fmt.Printf("Failed to load standard library - %v\n", err)
+	}
+
 	history := make([]string, 0)
 	for {
 		promptText := "calc> "
@@ -138,6 +147,18 @@ func loadFileIntoRepl(path string, evalulator *eval.Evalulator) error {
 	}
 
 	fileAst, err := Ast(fileContents)
+	if err != nil {
+		return err
+	}
+	err = evalulator.UpdateGlobalState(fileAst)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func loadStdLib(evalulator *eval.Evalulator) error {
+	fileAst, err := Ast(stdlibCode)
 	if err != nil {
 		return err
 	}
