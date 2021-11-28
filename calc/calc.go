@@ -48,6 +48,7 @@ func ParseAndEval(code string, programArgs []string) (eval.Value, error) {
 		return eval.Value{}, err
 	}
 	evalulator := eval.Evalulator{}
+	loadStdLib(&evalulator)
 	evalResult, err := evalulator.EvalProgram(ast, programArgs)
 	if err != nil {
 		return eval.Value{}, err
@@ -128,6 +129,12 @@ func RunRepl() {
 				fmt.Println(err)
 				continue
 			}
+			err = loadStdLib(&evalutor)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
 			fmt.Println("Reloaded")
 			continue
 		}

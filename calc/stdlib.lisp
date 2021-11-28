@@ -165,3 +165,14 @@
 (defun contains (xs x)
     (> (length (filter xs (lambda (a) (= a x)))) 0)
 )
+
+(defun randomNumber (from to)
+    (def mag (- to from))
+    (floor (+ (* (rng) mag) from))
+)
+
+(defun round (n)
+    (def f (floor n))
+    (def c (ceil n))
+    (if ((> (- c n) 0.5)) f c)
+)

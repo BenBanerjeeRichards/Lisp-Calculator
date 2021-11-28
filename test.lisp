@@ -77,6 +77,15 @@
     (assertEq false (contains (list) 5) "contains4")
 )
 
+(defun testRound ()
+    (assertEq 10 (round 10) "round1")
+    (assertEq 10 (round 10.3) "round1")
+    (assertEq 10 (round 10.49) "round1")
+    (assertEq 11 (round 10.5) "round1")
+    (assertEq 11 (round 10.7) "round1")
+    (assertEq 11 (round 11) "round1")
+)
+
 (defun test () 
     (testAppend)
     (testMap)

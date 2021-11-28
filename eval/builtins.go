@@ -1,8 +1,11 @@
 package eval
 
 import (
+	"bufio"
 	"fmt"
 	"math"
+	"math/rand"
+	"os"
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
@@ -86,6 +89,12 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
 		}
 		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return math.Pow(f1, f2) }, funcAppNode.Args[0], funcAppNode.Args[1], env)
+	case "mod":
+		if len(funcAppNode.Args) != 2 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Binary function expected two paremters (got %d)", len(funcAppNode.Args))}
+		}
+		return evalulator.builtInBinaryOp(func(f1, f2 float64) float64 { return math.Mod(f1, f2) }, funcAppNode.Args[0], funcAppNode.Args[1], env)
 	case "log":
 		if len(funcAppNode.Args) != 2 {
 			return Value{}, types.Error{Range: funcAppNode.Range,
@@ -107,6 +116,57 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		}
 		val := Value{}
 		val.NewNum(math.Sqrt(sqrtOf.Num))
+		return val, nil
+	case "input":
+		if len(funcAppNode.Args) != 0 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Expected no arguments to function `input` (got %d)", len(funcAppNode.Args))}
+		}
+		// TODO make this work with go-prompt for REPL
+		reader := bufio.NewReader(os.Stdin)
+		text, _ := reader.ReadString('\n')
+		val := Value{}
+		val.NewString(text)
+		return val, nil
+	case "rng":
+		if len(funcAppNode.Args) != 0 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Expected no arguments to function `rng` (got %d)", len(funcAppNode.Args))}
+		}
+		val := Value{}
+		val.NewNum(rand.Float64())
+		return val, nil
+	case "floor":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		floorOf, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if floorOf.Kind != NumType {
+			return Value{}, types.Error{Range: funcAppNode.Args[0].GetRange(),
+				Simple: fmt.Sprintf("Type error - expected number (got %s)", floorOf.Kind)}
+		}
+		val := Value{}
+		val.NewNum(math.Floor(floorOf.Num))
+		return val, nil
+	case "ceil":
+		if len(funcAppNode.Args) != 1 {
+			return Value{}, types.Error{Range: funcAppNode.Range,
+				Simple: fmt.Sprintf("Unary function expected one paremters (got %d)", len(funcAppNode.Args))}
+		}
+		ceilOf, err := evalulator.evalExpr(funcAppNode.Args[0], env)
+		if err != nil {
+			return Value{}, err
+		}
+		if ceilOf.Kind != NumType {
+			return Value{}, types.Error{Range: funcAppNode.Args[0].GetRange(),
+				Simple: fmt.Sprintf("Type error - expected number (got %s)", ceilOf.Kind)}
+		}
+		val := Value{}
+		val.NewNum(math.Ceil(ceilOf.Num))
 		return val, nil
 	case ">":
 		if len(funcAppNode.Args) != 2 {
