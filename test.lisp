@@ -52,8 +52,8 @@
     (assertEq (list "" " mat was sat on by " " cat by " " lamp") (split "the mat was sat on by the cat by the lamp" "the") "split3")
     (assertEq (list "" " mat was sat on by " " cat by " " lamp " "") (split "the mat was sat on by the cat by the lamp the" "the") "split4")
     (assertEq (list "the quick brown fox") (split "the quick brown fox" "@") "split5")
-    (assertEq (list "the quick brown fox") (split "the quick brown fox" "deliminator") "split5")
-    (assertEq (list "the quick brown fox") (split "the quick brown fox" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") "split5")
+    (assertEq (list "the quick brown fox") (split "the quick brown fox" "deliminator") "split6")
+    (assertEq (list "the quick brown fox") (split "the quick brown fox" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") "split7")
 )
 
 (defun testCharToNum ()
@@ -79,11 +79,11 @@
 
 (defun testRound ()
     (assertEq 10 (round 10) "round1")
-    (assertEq 10 (round 10.3) "round1")
-    (assertEq 10 (round 10.49) "round1")
-    (assertEq 11 (round 10.5) "round1")
-    (assertEq 11 (round 10.7) "round1")
-    (assertEq 11 (round 11) "round1")
+    (assertEq 10 (round 10.3) "round2")
+    (assertEq 10 (round 10.49) "round3")
+    (assertEq 11 (round 10.5) "round4")
+    (assertEq 11 (round 10.7) "round5")
+    (assertEq 11 (round 11) "round6")
 )
 
 (defun test () 
@@ -98,6 +98,7 @@
     (testCharToNum)
     (testStrToNum)
     (testContains)
+    (testRound)
 )
 
 (defun main (args)
