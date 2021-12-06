@@ -2,3 +2,5 @@
 *.dot
 *.png
 notes
+aoc
+input.lisp
