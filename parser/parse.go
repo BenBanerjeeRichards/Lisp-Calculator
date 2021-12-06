@@ -156,7 +156,7 @@ func (p *Parser) ParseExpression() (Node, error) {
 		return Node{}, tokError
 	}
 	if err != nil {
-		return Node{}, nil
+		return Node{}, err
 	}
 	p.nextToken()
 	return Node{Kind: ExpressionNode, Children: childExpressions, Range: types.FileRange{Start: rangeStart.End, End: rangeEnd.End}}, nil

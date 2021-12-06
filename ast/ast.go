@@ -59,7 +59,7 @@ type AstResult struct {
 func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstResult, error) {
 	asts, err := constructor.createAst(rootExpression, true)
 	if err != nil {
-		return AstResult{}, nil
+		return AstResult{}, err
 	}
 	return AstResult{Asts: asts, GlobalVariables: constructor.GlobalVariables, Functions: constructor.Functions, Imports: constructor.Imports}, nil
 }

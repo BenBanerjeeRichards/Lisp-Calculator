@@ -79,7 +79,7 @@ func (v *Value) NewClosure(args []string, body []ast.Ast, env Env) {
 func (val Value) ToString() string {
 	switch val.Kind {
 	case NumType:
-		return fmt.Sprint(val.Num)
+		return fmt.Sprintf("%f", val.Num)
 	case StringType:
 		return "\"" + val.String + "\""
 	case BoolType:

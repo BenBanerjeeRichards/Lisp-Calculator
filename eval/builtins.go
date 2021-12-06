@@ -199,11 +199,11 @@ func (evalulator Evalulator) EvalBuiltin(funcAppNode ast.FunctionApplicationExpr
 		}
 		lhsVal, err := evalulator.evalExpr(funcAppNode.Args[0], env)
 		if err != nil {
-			return Value{}, nil
+			return Value{}, err
 		}
 		rhsVal, err := evalulator.evalExpr(funcAppNode.Args[1], env)
 		if err != nil {
-			return Value{}, nil
+			return Value{}, err
 		}
 		val := Value{}
 		val.NewBool(lhsVal.equals(rhsVal))
