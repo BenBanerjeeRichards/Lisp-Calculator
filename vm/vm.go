@@ -212,7 +212,5 @@ func printStack(stack []Value) {
 }
 
 func Main() {
-	c := Compiler{}
 
-	c.CompileFunction()
 }
