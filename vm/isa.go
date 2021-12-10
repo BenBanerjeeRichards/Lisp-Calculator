@@ -53,6 +53,14 @@ const (
 	// RETURN
 	// Return from running current frame
 	RETURN
+
+	// LOAD_GLOBAL <globalIdx>
+	// Push global at given index onto top of stack
+	LOAD_GLOBAL
+
+	// STORE_GLOBAL <globalIdx>
+	// Store value at top of stack into given global index
+	STORE_GLOBAL
 )
 
 func opcodeToString(op int) string {
@@ -84,6 +92,10 @@ func opcodeToString(op int) string {
 		return "STORE_NULL"
 	case RETURN:
 		return "RETURN"
+	case STORE_GLOBAL:
+		return "STORE_GLOBAL"
+	case LOAD_GLOBAL:
+		return "LOAD_GLOBAL"
 	default:
 		return fmt.Sprintf("<%d>", op)
 	}

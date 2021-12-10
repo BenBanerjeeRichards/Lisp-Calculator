@@ -9,32 +9,35 @@ import (
 )
 
 type Compiler struct {
-	GlobalVariables map[string]Value
-	Functions       []*Frame
-	FunctionMap     map[string]int
+	GlobalVariables   []Value
+	GlobalVariableMap map[string]int
+	Functions         []*Frame
+	FunctionMap       map[string]int
 }
 
 func (c *Compiler) New() {
 	c.Functions = make([]*Frame, 0)
 	c.FunctionMap = make(map[string]int)
+	c.GlobalVariableMap = make(map[string]int)
+	c.GlobalVariables = make([]Value, 0)
 }
 
 type CompileResult struct {
-	Frame       Frame
-	Functions   []*Frame
-	FunctionMap map[string]int
+	Frame           Frame
+	Functions       []*Frame
+	GlobalVariables []Value
 }
 
-// CompileFunction compiles the given AST into bytecode
-func (c *Compiler) CompileFunction(asts []ast.Ast) (CompileResult, error) {
+// CompileProgram compiles the given AST into bytecode
+func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 	frame := Frame{}
 	frame.New()
+	frame.IsRootFrame = true
 	err := c.compileBlock(asts, &frame)
-	return CompileResult{Frame: frame, Functions: c.Functions, FunctionMap: c.FunctionMap}, err
+	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables}, err
 }
 
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
-	// spew.Dump(asts)
 	for _, exprOrStmt := range asts {
 		if exprOrStmt.Kind == ast.ExprType {
 			err := c.CompileExpression(exprOrStmt.Expression, frame)
@@ -120,6 +123,8 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 	case ast.VarUseExpr:
 		if idx, ok := frame.VariableMap[expr.Identifier]; ok {
 			frame.EmitUnary(LOAD_VAR, idx)
+		} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
+			frame.EmitUnary(LOAD_GLOBAL, idx)
 		} else {
 			return errors.New("unknown variable")
 		}
@@ -143,6 +148,8 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 				frame.EmitUnary(CALL_BUILTIN, idx)
 			} else if idx, ok := frame.VariableMap[expr.Identifier]; ok {
 				frame.EmitUnary(LOAD_VAR, idx)
+			} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
+				frame.EmitUnary(LOAD_GLOBAL, idx)
 			} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
 				frame.EmitUnary(CALL_FUNCTION, idx)
 			} else {
@@ -174,13 +181,24 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		idx, ok := frame.VariableMap[stmt.Identifier]
-		if !ok {
-			frame.Variables = append(frame.Variables, Value{})
-			idx = len(frame.Variables) - 1
-			frame.VariableMap[stmt.Identifier] = idx
+		// TODO clean this up
+		if frame.IsRootFrame {
+			idx, ok := c.GlobalVariableMap[stmt.Identifier]
+			if !ok {
+				c.GlobalVariables = append(c.GlobalVariables, Value{})
+				idx = len(c.GlobalVariables) - 1
+				c.GlobalVariableMap[stmt.Identifier] = idx
+			}
+			frame.EmitUnary(STORE_GLOBAL, idx)
+		} else {
+			idx, ok := frame.VariableMap[stmt.Identifier]
+			if !ok {
+				frame.Variables = append(frame.Variables, Value{})
+				idx = len(frame.Variables) - 1
+				frame.VariableMap[stmt.Identifier] = idx
+			}
+			frame.EmitUnary(STORE_VAR, idx)
 		}
-		frame.EmitUnary(STORE_VAR, idx)
 		frame.Emit(STORE_NULL)
 	case ast.ImportStmt:
 		frame.Emit(STORE_NULL)

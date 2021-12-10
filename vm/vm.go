@@ -22,6 +22,8 @@ type Frame struct {
 	Variables         []Value
 	VariableMap       map[string]int
 	FunctionArguments []string
+	// The root node of the frame hierarchy
+	IsRootFrame bool
 }
 
 func (f *Frame) New() {
@@ -30,6 +32,7 @@ func (f *Frame) New() {
 	f.Variables = make([]Value, 0)
 	f.VariableMap = make(map[string]int)
 	f.FunctionArguments = make([]string, 0)
+	f.IsRootFrame = false
 }
 
 func (f *Frame) Emit(opcode int) {
@@ -47,10 +50,10 @@ type ClosureValue struct {
 
 func EvalInstructions(compileRes CompileResult) Value {
 	stack := []Value{}
-	return evalInstructions(compileRes.Functions, compileRes.Frame, stack)
+	return evalInstructions(&compileRes.GlobalVariables, compileRes.Functions, compileRes.Frame, stack)
 }
 
-func evalInstructions(functions []*Frame, frame Frame, stack []Value) Value {
+func evalInstructions(globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) Value {
 	// POC, very inefficient (especially the stack)
 	// for _, instr := range frame.Code {
 	// 	fmt.Println(instr)
@@ -99,6 +102,12 @@ out:
 		case STORE_VAR:
 			frame.Variables[instr.Arg1] = stack[len(stack)-1]
 			stack = stack[0 : len(stack)-1]
+		case LOAD_GLOBAL:
+			stack = append(stack, (*globalVariables)[instr.Arg1])
+		case STORE_GLOBAL:
+			(*globalVariables)[instr.Arg1] = stack[len(stack)-1]
+			stack = stack[0 : len(stack)-1]
+
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
 			// FIXME handle error
@@ -119,7 +128,7 @@ out:
 		case CALL_FUNCTION:
 			// TODO handle globals
 			function := functions[instr.Arg1]
-			val := evalInstructions(functions, *function, stack)
+			val := evalInstructions(globalVariables, functions, *function, stack)
 			stack = append(stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
@@ -146,15 +155,15 @@ func printStack(stack []Value) {
 
 func Main() {
 	astRes, err := calc.Ast(`
-	(defun f (a b) (/ a b))
-	(f 10 2)`)
+	(def x 10)(def y 20)(+ x y)`)
 	if err != nil {
 		fmt.Println("AST error", err)
 		return
 	}
 
 	c := Compiler{}
-	frame, err := c.CompileFunction(astRes.Asts)
+	c.New()
+	frame, err := c.CompileProgram(astRes.Asts)
 	if err != nil {
 		fmt.Println("COMPILE error", err)
 		return
