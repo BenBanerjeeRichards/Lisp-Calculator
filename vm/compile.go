@@ -10,18 +10,30 @@ import (
 
 type Compiler struct {
 	GlobalVariables map[string]Value
-	Functions       map[string]*ast.FuncDefStmt
+	Functions       []*Frame
+	FunctionMap     map[string]int
+}
+
+func (c *Compiler) New() {
+	c.Functions = make([]*Frame, 0)
+	c.FunctionMap = make(map[string]int)
+}
+
+type CompileResult struct {
+	Frame       Frame
+	Functions   []*Frame
+	FunctionMap map[string]int
 }
 
 // CompileFunction compiles the given AST into bytecode
-func (c Compiler) CompileFunction(asts []ast.Ast) (Frame, error) {
+func (c *Compiler) CompileFunction(asts []ast.Ast) (CompileResult, error) {
 	frame := Frame{}
 	frame.New()
 	err := c.compileBlock(asts, &frame)
-	return frame, err
+	return CompileResult{Frame: frame, Functions: c.Functions, FunctionMap: c.FunctionMap}, err
 }
 
-func (c Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
+func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
 	// spew.Dump(asts)
 	for _, exprOrStmt := range asts {
 		if exprOrStmt.Kind == ast.ExprType {
@@ -42,7 +54,7 @@ func (c Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
 	return nil
 }
 
-func (c Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
+func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 	switch expr := exprNode.(type) {
 	case ast.NumberExpr:
 		val := Value{}
@@ -131,7 +143,7 @@ func (c Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 				frame.EmitUnary(CALL_BUILTIN, idx)
 			} else if idx, ok := frame.VariableMap[expr.Identifier]; ok {
 				frame.EmitUnary(LOAD_VAR, idx)
-			} else if idx, ok := frame.FunctionMap[expr.Identifier]; ok {
+			} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
 				frame.EmitUnary(CALL_FUNCTION, idx)
 			} else {
 				return errors.New("unknown variable or function")
@@ -155,7 +167,7 @@ func lookupBuiltin(identifier string) (int, Builtin, bool) {
 	return 0, Builtin{}, false
 }
 
-func (c Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
+func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 	switch stmt := stmtExpr.(type) {
 	case ast.VarDefStmt:
 		err := c.CompileExpression(stmt.Value, frame)
@@ -200,9 +212,9 @@ func (c Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		frame.Functions = append(frame.Functions, &functionFrame)
-		functionId := len(frame.Functions) - 1
-		frame.FunctionMap[stmt.Identifier] = functionId
+		c.Functions = append(c.Functions, &functionFrame)
+		functionId := len(c.Functions) - 1
+		c.FunctionMap[stmt.Identifier] = functionId
 		frame.Emit(STORE_NULL)
 	default:
 		return errors.New("unsupported statement")

@@ -21,8 +21,6 @@ type Frame struct {
 	Constants         []Value
 	Variables         []Value
 	VariableMap       map[string]int
-	Functions         []*Frame
-	FunctionMap       map[string]int
 	FunctionArguments []string
 }
 
@@ -31,8 +29,6 @@ func (f *Frame) New() {
 	f.Constants = make([]Value, 0)
 	f.Variables = make([]Value, 0)
 	f.VariableMap = make(map[string]int)
-	f.Functions = make([]*Frame, 0)
-	f.FunctionMap = make(map[string]int)
 	f.FunctionArguments = make([]string, 0)
 }
 
@@ -49,12 +45,12 @@ type ClosureValue struct {
 	Body Frame
 }
 
-func EvalInstructions(frame Frame) Value {
+func EvalInstructions(compileRes CompileResult) Value {
 	stack := []Value{}
-	return evalInstructions(frame, stack)
+	return evalInstructions(compileRes.Functions, compileRes.Frame, stack)
 }
 
-func evalInstructions(frame Frame, stack []Value) Value {
+func evalInstructions(functions []*Frame, frame Frame, stack []Value) Value {
 	// POC, very inefficient (especially the stack)
 	// for _, instr := range frame.Code {
 	// 	fmt.Println(instr)
@@ -122,8 +118,8 @@ out:
 			break out
 		case CALL_FUNCTION:
 			// TODO handle globals
-			function := frame.Functions[instr.Arg1]
-			val := evalInstructions(*function, stack)
+			function := functions[instr.Arg1]
+			val := evalInstructions(functions, *function, stack)
 			stack = append(stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
