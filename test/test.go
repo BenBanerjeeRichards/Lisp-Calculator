@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
-	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/vm"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -23,7 +23,7 @@ func printTestFailedBool(code string, expected bool, actual bool) {
 func printTestFailedString(code string, expected string, actual string) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
-func printTestFailedList(code string, expected []eval.Value, actual []eval.Value) {
+func printTestFailedList(code string, expected []vm.Value, actual []vm.Value) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
 
@@ -31,24 +31,29 @@ func printTokensFailed(code string, message string, expected []parser.Token, act
 	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
 }
 
-func evalProgram(code string) (eval.Value, bool) {
+func evalProgram(code string) (vm.Value, bool) {
 	asts, err := calc.Ast(code)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return eval.Value{}, false
+		return vm.Value{}, false
 	}
-	evalulator := eval.Evalulator{}
-	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
+	compiler := vm.Compiler{}
+	frame, err := compiler.CompileFunction(asts.Asts)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return eval.Value{}, false
+		return vm.Value{}, false
+	}
+	evalResult := vm.EvalInstructions(frame)
+	if err != nil {
+		printTestFailedErr(code, err)
+		return vm.Value{}, false
 	}
 	return evalResult, true
 }
 
 func (r *Runner) ExpectNumber(code string, expected float64) bool {
 	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.NumType {
+		if evalResult.Kind != vm.NumType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -67,7 +72,7 @@ func (r *Runner) ExpectNumber(code string, expected float64) bool {
 
 func (r *Runner) ExpectBool(code string, expected bool) bool {
 	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.BoolType {
+		if evalResult.Kind != vm.BoolType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -84,9 +89,9 @@ func (r *Runner) ExpectBool(code string, expected bool) bool {
 	return false
 }
 
-func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
+func (r *Runner) ExpectList(code string, expected []vm.Value) bool {
 	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.ListType {
+		if evalResult.Kind != vm.ListType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -112,7 +117,7 @@ func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
 
 func (r *Runner) ExpectString(code string, expected string) bool {
 	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.StringType {
+		if evalResult.Kind != vm.StringType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -130,7 +135,7 @@ func (r *Runner) ExpectString(code string, expected string) bool {
 }
 func (r *Runner) ExpectNull(code string) bool {
 	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.NullType {
+		if evalResult.Kind != vm.NullType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected null but got type %s\n", code, evalResult.Kind)
 			return false
@@ -143,20 +148,14 @@ func (r *Runner) ExpectNull(code string) bool {
 }
 
 func (r *Runner) ExepctError(code string) bool {
-	asts, err := calc.Ast(code)
+	_, err := calc.Ast(code)
 	if err != nil {
 		r.numPassed += 1
 		return true
 	}
-	evalulator := eval.Evalulator{}
-	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
-	if err != nil {
-		r.numPassed += 1
-		return true
-	}
-
+	// TODO fix this when runtime errors implemented
 	r.numFailed += 1
-	fmt.Printf("Failed: %s\nReason: Expected an error but code evalulated successfully to %v\n", code, evalResult)
+	fmt.Printf("Failed: %s\nReason: Expected an error but code compiled \n", code)
 	return false
 }
 
@@ -271,7 +270,7 @@ func Run() {
 	r.ExpectBool("(or true true)", true)
 	r.ExpectBool("(or false false)", false)
 
-	// Eqality
+	// Equality
 	r.ExpectBool("(= 10 10)", true)
 	r.ExpectBool("(= 10 7)", false)
 	r.ExpectBool("(= true false)", false)
@@ -297,13 +296,13 @@ func Run() {
 	r.ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list null false)))`, false)
 	r.ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list false false)))`, false)
 
-	r.ExpectList("(list 1 2 3)", []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}})
-	r.ExpectList("(list)", []eval.Value{})
-	r.ExpectList(`(list 1 false null "s")`, []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.BoolType, Bool: false}, {Kind: eval.NullType}, {Kind: eval.StringType, String: "s"}})
-	r.ExpectList("(list 1 (list 2 3) null)", []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.ListType, List: []eval.Value{{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}}}, {Kind: eval.NullType}})
+	r.ExpectList("(list 1 2 3)", []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.NumType, Num: 2}, {Kind: vm.NumType, Num: 3}})
+	r.ExpectList("(list)", []vm.Value{})
+	r.ExpectList(`(list 1 false null "s")`, []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.BoolType, Bool: false}, {Kind: vm.NullType}, {Kind: vm.StringType, String: "s"}})
+	r.ExpectList("(list 1 (list 2 3) null)", []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.ListType, List: []vm.Value{{Kind: vm.NumType, Num: 2}, {Kind: vm.NumType, Num: 3}}}, {Kind: vm.NullType}})
 
 	// List length
 	r.ExpectNumber("(length (list))", 0)
@@ -379,6 +378,19 @@ func Run() {
 			(* 2 a)))     
 		(first))
 	(quadraticFirst 2 5 3)`, -1)
+	r.ExpectNumber(`
+	(defun f (a b) (/ a b))
+	(f 10 2)`, 5)
+	r.ExpectNumber(`
+	  (def x 10)
+	  (defun f () x)
+	  (f)
+	`, 10)
+	r.ExpectNumber(`
+	  (def x 10)
+	  (defun f (x) x)
+	  (f 20)
+	`, 20)
 
 	r.ExpectNumber("(if true 4 2)", 4)
 	r.ExpectNumber("(if true 4)", 4)
@@ -391,6 +403,8 @@ func Run() {
 		 (def y 20)
 		 (- x y)
 	))`, -10)
+
+	r.ExpectNumber(`(if true 1 0) (20)`, 20)
 
 	r.ExpectNumber(`
 	(def sum 0)
