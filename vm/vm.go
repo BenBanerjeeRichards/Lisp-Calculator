@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
@@ -187,10 +188,28 @@ func printStack(stack []Value) {
 
 func Main() {
 	astRes, err := calc.Ast(`
-	(def x 20)
-	(def f (lambda (y) (+ x y)))
-	(def x 200)
-	(funcall f 100)
+	(defun isPrime (n)
+    (def prime true)
+    (if (= n 1)
+        false
+        ((def i 2)
+        (while (and prime (<= i (sqrt n)))
+            (if (= 0 (mod n i))(def prime false))
+            (def i (+ i 1)))))
+    (prime)
+	)	
+
+	(defun euler7 ()
+		(def primeCount 0)
+		(def i 2)
+		(while (not (= primeCount 10001))
+			(if (isPrime i)(
+				(def primeCount (+ 1 primeCount))))
+			(def i (+ i 1))
+		)
+		(- i 1)
+	)
+	(euler7)
 	`)
 	if err != nil {
 		fmt.Println("AST error", err)
@@ -199,12 +218,17 @@ func Main() {
 
 	c := Compiler{}
 	c.New()
+	compileStart := time.Now()
 	frame, err := c.CompileProgram(astRes.Asts)
 	if err != nil {
 		fmt.Println("COMPILE error", err)
 		return
 	}
+	fmt.Printf("Compiled in %s\n", time.Since(compileStart))
 
+	runStart := time.Now()
 	val := EvalInstructions(frame)
+	fmt.Printf("Ran in %s\n", time.Since(runStart))
+
 	fmt.Println(val.ToString())
 }
