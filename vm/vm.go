@@ -10,10 +10,11 @@ import (
 type Instruction struct {
 	Opcode int
 	Arg1   int
+	Arg2   int
 }
 
 func (i Instruction) String() string {
-	return fmt.Sprintf("%s %d", opcodeToString(i.Opcode), i.Arg1)
+	return fmt.Sprintf("%s %d %d", opcodeToString(i.Opcode), i.Arg1, i.Arg2)
 }
 
 type Frame struct {
@@ -43,9 +44,13 @@ func (f *Frame) EmitUnary(opcode int, arg1 int) {
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1})
 }
 
+func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int) {
+	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1, Arg2: arg2})
+}
+
 type ClosureValue struct {
 	Args []string
-	Body Frame
+	Body *Frame
 }
 
 func EvalInstructions(compileRes CompileResult) Value {
@@ -55,11 +60,14 @@ func EvalInstructions(compileRes CompileResult) Value {
 
 func evalInstructions(globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) Value {
 	// POC, very inefficient (especially the stack)
+	// fmt.Println("==========================")
 	// for _, instr := range frame.Code {
 	// 	fmt.Println(instr)
 	// }
-	pc := 0
+	// fmt.Println("--------------------------")
 
+	pc := 0
+	// TODO error handling for runtime errors
 out:
 	for pc < len(frame.Code) {
 		instr := frame.Code[pc]
@@ -107,7 +115,6 @@ out:
 		case STORE_GLOBAL:
 			(*globalVariables)[instr.Arg1] = stack[len(stack)-1]
 			stack = stack[0 : len(stack)-1]
-
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
 			// FIXME handle error
@@ -129,6 +136,31 @@ out:
 			// TODO handle globals
 			function := functions[instr.Arg1]
 			val := evalInstructions(globalVariables, functions, *function, stack)
+			stack = append(stack, val)
+		case PUSH_CLOSURE_VAR:
+			closure := stack[len(stack)-1]
+			if closure.Kind != ClosureType {
+				// TODO error handling
+				panic("bad type - expected closure")
+			}
+			closure.Closure.Body.Variables[instr.Arg2] = frame.Variables[instr.Arg1]
+			stack[len(stack)-1] = closure
+		case PUSH_GLOBAL_CLOSURE_VAR:
+			closure := stack[len(stack)-1]
+			if closure.Kind != ClosureType {
+				// TODO error handling
+				panic("bad type - expected closure")
+			}
+			closure.Closure.Body.Variables[instr.Arg2] = (*globalVariables)[instr.Arg2]
+			stack[len(stack)-1] = closure
+
+		case CALL_CLOSURE:
+			closure := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if closure.Kind != ClosureType {
+				panic("bad type closure")
+			}
+			val := evalInstructions(globalVariables, functions, *closure.Closure.Body, stack)
 			stack = append(stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
@@ -155,7 +187,11 @@ func printStack(stack []Value) {
 
 func Main() {
 	astRes, err := calc.Ast(`
-	(def x 10)(def y 20)(+ x y)`)
+	(def x 20)
+	(def f (lambda (y) (+ x y)))
+	(def x 200)
+	(funcall f 100)
+	`)
 	if err != nil {
 		fmt.Println("AST error", err)
 		return

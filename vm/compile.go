@@ -128,6 +128,61 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		} else {
 			return errors.New("unknown variable")
 		}
+	case ast.ClosureDefExpr:
+		closureFrame := Frame{}
+		closureFrame.New()
+		// Capture all variables in current scope
+		closureFrame.VariableMap = frame.VariableMap
+		closureFrame.Variables = frame.Variables
+		// Capture globals as vars
+		for range c.GlobalVariables {
+			closureFrame.Variables = append(closureFrame.Variables, Value{})
+		}
+		for globalName, globalIdx := range c.GlobalVariableMap {
+			closureFrame.VariableMap[globalName] = globalIdx + len(frame.Variables)
+		}
+
+		// Push arguments onto stack
+		for _, argName := range expr.Args {
+			closureFrame.Variables = append(closureFrame.Variables, Value{})
+			closureFrame.VariableMap[argName] = len(closureFrame.Variables) - 1
+			closureFrame.EmitUnary(STORE_VAR, len(closureFrame.Variables)-1)
+		}
+		err := c.compileBlock(expr.Body, &closureFrame)
+		if err != nil {
+			return err
+		}
+
+		// Closure is a value that needs to be pushed to top of stack
+		closureValue := Value{}
+		closureValue.NewClosure(expr.Args, &closureFrame)
+		frame.Constants = append(frame.Constants, closureValue)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+
+		// Now capture the values of the variables
+		for sourceIndex := range frame.Variables {
+			frame.EmitBinary(PUSH_CLOSURE_VAR, sourceIndex, sourceIndex)
+		}
+		// Now capture globals - closures can not access or modify globals, only capture them into variables
+		// From langauge user POV, this means that globals can only be read from closure and and changes exist only within
+		// the closure
+		for globalIndex := range c.GlobalVariables {
+			// Target index set  - see above capturing logic.
+			// Variables are in this order: <captured vars><captured globals><lambda arguments><closure arguments>
+			frame.EmitBinary(PUSH_GLOBAL_CLOSURE_VAR, globalIndex, len(frame.Variables)+globalIndex)
+		}
+	case ast.ClosureApplicationExpr:
+		for _, arg := range expr.Args {
+			err := c.CompileExpression(arg, frame)
+			if err != nil {
+				return err
+			}
+		}
+		err := c.CompileExpression(expr.Closure, frame)
+		if err != nil {
+			return err
+		}
+		frame.Emit(CALL_CLOSURE)
 	case ast.FunctionApplicationExpr:
 		for _, arg := range expr.Args {
 			err := c.CompileExpression(arg, frame)

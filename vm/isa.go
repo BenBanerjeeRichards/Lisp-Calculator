@@ -61,6 +61,17 @@ const (
 	// STORE_GLOBAL <globalIdx>
 	// Store value at top of stack into given global index
 	STORE_GLOBAL
+
+	// PUSH_CLOSURE_VAR <sourceIdx> <targetIdx>
+	// Store variable at current from index sourceIdx into closure (at TOS) frame index targetIdx
+	PUSH_CLOSURE_VAR
+
+	// PUSH_GLOBAL_CLOSURE_VAR <globalIdx> <targetIdx>
+	// Push global at globalIdx into closure (at TOS) variable targetIdx (This means closures capture global)
+	PUSH_GLOBAL_CLOSURE_VAR
+
+	// Call the closure at the top of stack
+	CALL_CLOSURE
 )
 
 func opcodeToString(op int) string {
@@ -75,7 +86,6 @@ func opcodeToString(op int) string {
 		return "COND_JUMP"
 	case COND_JUMP_FALSE:
 		return "COND_JUMP_FALSE"
-
 	case LOAD_CONST:
 		return "LOAD_CONST"
 	case LOAD_VAR:
@@ -96,6 +106,13 @@ func opcodeToString(op int) string {
 		return "STORE_GLOBAL"
 	case LOAD_GLOBAL:
 		return "LOAD_GLOBAL"
+	case PUSH_CLOSURE_VAR:
+		return "PUSH_CLOSURE_VAR"
+	case PUSH_GLOBAL_CLOSURE_VAR:
+		return "PUSH_GLOBAL_CLOSURE_VAR"
+	case CALL_CLOSURE:
+		return "CALL_CLOSURE"
+
 	default:
 		return fmt.Sprintf("<%d>", op)
 	}

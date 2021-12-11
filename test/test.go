@@ -434,6 +434,23 @@ func Run() {
 	(funcall f 4)
 	`, 48)
 	r.ExpectNumber(`
+	(defun f () 
+		(def x 10)
+		(def l (lambda (y) (+ x y)))
+		(funcall l 30)
+	)
+	(f)
+	`, 40)
+	r.ExpectNumber(`
+	(defun f () 
+		(def x 10)
+		(def l (lambda (y) (+ x y)))
+		(def x 100)
+		(funcall l 30)
+	)
+	(f)
+	`, 40)
+	r.ExpectNumber(`
 	(def x 200)
 	(def f (lambda (l) (+ x l)))
 	(def x 1000)

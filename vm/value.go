@@ -3,8 +3,6 @@ package vm
 import (
 	"fmt"
 	"strings"
-
-	"github.com/benbanerjeerichards/lisp-calculator/ast"
 )
 
 const (
@@ -48,9 +46,9 @@ func (v *Value) NewList(value []Value) {
 func (v *Value) NewNull() {
 	v.Kind = NullType
 }
-func (v *Value) NewClosure(args []string, body []ast.Ast) {
+func (v *Value) NewClosure(args []string, body *Frame) {
 	v.Kind = ClosureType
-	v.Closure = ClosureValue{Args: args}
+	v.Closure = ClosureValue{Args: args, Body: body}
 }
 
 // Cant use Stringer interface due to name conflict
