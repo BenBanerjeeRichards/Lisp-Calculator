@@ -44,7 +44,7 @@ func evalProgram(code string) (vm.Value, bool) {
 		printTestFailedErr(code, err)
 		return vm.Value{}, false
 	}
-	evalResult := vm.Eval(frame, []string{"arg1", "arg2", "arg3"})
+	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"})
 	if err != nil {
 		printTestFailedErr(code, err)
 		return vm.Value{}, false
@@ -148,7 +148,7 @@ func (r *Runner) ExpectNull(code string) bool {
 	return false
 }
 
-func (r *Runner) ExepctError(code string) bool {
+func (r *Runner) ExpectError(code string) bool {
 	_, err := calc.Ast(code)
 	if err != nil {
 		r.numPassed += 1
@@ -512,14 +512,13 @@ func Run() {
 	(defun main () (aGlobalVariable))
 	`, 100)
 
+	r.ExpectError(`(defun main (a b) a)`)
+
 	// Imports eval to null
-	r.ExepctError("(import) (10)")
+	r.ExpectError("(import) (10)")
 	r.ExpectNull(`(import "hello")`)
 	r.ExpectNull(`(import "hello" "world")`)
 	r.ExpectNull(`(import "hello" "world" "another")`)
-
-	// Panic
-	r.ExepctError(`(panic "error!")`)
 
 	// Concat
 	r.ExpectString(`(concat "Hello " "World")`, "Hello World")

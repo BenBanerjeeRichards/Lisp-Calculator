@@ -5,8 +5,7 @@ import (
 	"time"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
-	"github.com/benbanerjeerichards/lisp-calculator/eval"
-	"github.com/davecgh/go-spew/spew"
+	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
 type Frame struct {
@@ -17,6 +16,8 @@ type Frame struct {
 	FunctionArguments []string
 	// The root node of the frame hierarchy
 	IsRootFrame bool
+	// LineMap maps from opcode index to line number
+	LineMap []int
 }
 
 func (f *Frame) New() {
@@ -26,26 +27,30 @@ func (f *Frame) New() {
 	f.VariableMap = make(map[string]int)
 	f.FunctionArguments = make([]string, 0)
 	f.IsRootFrame = false
+	f.LineMap = []int{}
 }
 
-func (f *Frame) Emit(opcode int) {
+func (f *Frame) Emit(opcode int, lineNumber int) {
+	f.LineMap = append(f.LineMap, lineNumber)
 	f.Code = append(f.Code, Instruction{Opcode: opcode})
 }
 
-func (f *Frame) EmitUnary(opcode int, arg1 int) {
+func (f *Frame) EmitUnary(opcode int, arg1 int, lineNumber int) {
+	f.LineMap = append(f.LineMap, lineNumber)
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1})
 }
 
-func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int) {
+func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int, lineNumber int) {
+	f.LineMap = append(f.LineMap, lineNumber)
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1, Arg2: arg2})
 }
 
-func Eval(compileRes CompileResult, programArgs []string) Value {
+func Eval(compileRes CompileResult, programArgs []string) (Value, error) {
 	stack := []Value{}
 	return evalInstructions(programArgs, &compileRes.GlobalVariables, compileRes.Functions, compileRes.Frame, stack)
 }
 
-func evalInstructions(programArgs []string, globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) Value {
+func evalInstructions(programArgs []string, globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) (Value, error) {
 	// fmt.Println("==========================")
 	// for _, instr := range frame.Code {
 	// 	fmt.Println(instr.DetailedString(&frame))
@@ -71,20 +76,28 @@ out:
 			rhs := stack[len(stack)-2]
 			stack = stack[0 : len(stack)-2]
 			val := Value{}
-			checkType(eval.NumType, lhs.Kind)
-			checkType(eval.NumType, rhs.Kind)
+			if lhs.Kind != NumType {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for first argument to add, got %s", lhs.Kind)}
+			}
+			if rhs.Kind != NumType {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for second argument to add, got %s", lhs.Kind)}
+			}
 			val.NewNum(lhs.Num + rhs.Num)
 			stack = append(stack, val)
 		case COND_JUMP:
 			val := stack[len(stack)-1]
-			checkType(eval.BoolType, val.Kind)
+			if val.Kind != BoolType {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
+			}
 			stack = stack[0 : len(stack)-1]
 			if val.Bool {
 				pc += instr.Arg1
 			}
 		case COND_JUMP_FALSE:
 			val := stack[len(stack)-1]
-			checkType(eval.BoolType, val.Kind)
+			if val.Kind != BoolType {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
+			}
 			stack = stack[0 : len(stack)-1]
 			if !val.Bool {
 				pc += instr.Arg1
@@ -103,8 +116,13 @@ out:
 			stack = stack[0 : len(stack)-1]
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
-			// FIXME handle error
-			res, _ := builtin.Function(stack[len(stack)-(builtin.NumArgs):])
+			res, err := builtin.Function(stack[len(stack)-(builtin.NumArgs):])
+			if err != nil {
+				if stdErr, ok := err.(types.Error); ok {
+					return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc]}
+				}
+				return Value{}, nil
+			}
 			stack = stack[0 : len(stack)-(builtin.NumArgs)]
 			stack = append(stack, res)
 		case CREATE_LIST:
@@ -131,21 +149,24 @@ out:
 		case CALL_FUNCTION:
 			// TODO handle globals
 			function := functions[instr.Arg1]
-			val := evalInstructions(programArgs, globalVariables, functions, *function, stack)
+			val, err := evalInstructions(programArgs, globalVariables, functions, *function, stack)
+			if err != nil {
+				return Value{}, err
+			}
 			stack = append(stack, val)
 		case PUSH_CLOSURE_VAR:
 			closure := stack[len(stack)-1]
 			if closure.Kind != ClosureType {
-				// TODO error handling
-				panic("bad type - expected closure")
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 			}
 			closure.Closure.Body.Variables[instr.Arg2] = frame.Variables[instr.Arg1]
 			stack[len(stack)-1] = closure
 		case PUSH_GLOBAL_CLOSURE_VAR:
 			closure := stack[len(stack)-1]
 			if closure.Kind != ClosureType {
-				// TODO error handling
-				panic("bad type - expected closure")
+				if closure.Kind != ClosureType {
+					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
+				}
 			}
 			closure.Closure.Body.Variables[instr.Arg2] = (*globalVariables)[instr.Arg2]
 			stack[len(stack)-1] = closure
@@ -154,9 +175,14 @@ out:
 			closure := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			if closure.Kind != ClosureType {
-				panic("bad type closure")
+				if closure.Kind != ClosureType {
+					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
+				}
 			}
-			val := evalInstructions(programArgs, globalVariables, functions, *closure.Closure.Body, stack)
+			val, err := evalInstructions(programArgs, globalVariables, functions, *closure.Closure.Body, stack)
+			if err != nil {
+				return Value{}, err
+			}
 			stack = append(stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
@@ -164,14 +190,7 @@ out:
 		pc += 1
 	}
 
-	return stack[len(stack)-1]
-}
-
-// TODO remove this, just for easy debugging
-func checkType(expected string, actual string) {
-	if expected != actual {
-		panic(fmt.Sprintf("Bad type - expected %s got %s", expected, actual))
-	}
+	return stack[len(stack)-1], nil
 }
 
 func printStack(stack []Value) {
@@ -184,7 +203,7 @@ func printStack(stack []Value) {
 func Main() {
 	astRes, err := calc.Ast(`
 	(def f (lambda (x) (+ x 1)))
-	(funcall f 20)
+	(- "string" 23)
 	`)
 	if err != nil {
 		fmt.Println("AST error", err)
@@ -199,11 +218,14 @@ func Main() {
 		fmt.Println("COMPILE error", err)
 		return
 	}
-	spew.Dump(frame)
 	fmt.Printf("Compiled in %s\n", time.Since(compileStart))
 
 	runStart := time.Now()
-	val := Eval(frame, []string{})
+	val, err := Eval(frame, []string{})
+	if err != nil {
+		fmt.Printf("Runtime error - %v\n", err)
+		return
+	}
 	fmt.Printf("Ran in %s\n", time.Since(runStart))
 
 	fmt.Println(val.ToString())

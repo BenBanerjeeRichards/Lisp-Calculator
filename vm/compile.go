@@ -56,9 +56,11 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 	if mainIdx, ok := c.FunctionMap["main"]; ok {
 		mainIndex = mainIdx
 		if len(c.Functions[mainIdx].FunctionArguments) == 1 {
-			frame.Emit(PUSH_ARGS)
+			frame.Emit(PUSH_ARGS, -1)
+		} else if len(c.Functions[mainIdx].FunctionArguments) > 1 {
+			return CompileResult{}, types.Error{Simple: "Main function must take zero of one argument"}
 		}
-		frame.EmitUnary(CALL_FUNCTION, mainIdx)
+		frame.EmitUnary(CALL_FUNCTION, mainIdx, -1)
 	} else {
 		for _, exprOrStmt := range astResult.Asts {
 			if exprOrStmt.Kind == ast.ExprType {
@@ -108,22 +110,22 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		val := Value{}
 		val.NewNum(expr.Value)
 		frame.Constants = append(frame.Constants, val)
-		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 	case ast.BoolExpr:
 		val := Value{}
 		val.NewBool(expr.Value)
 		frame.Constants = append(frame.Constants, val)
-		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 	case ast.StringExpr:
 		val := Value{}
 		val.NewString(expr.Value)
 		frame.Constants = append(frame.Constants, val)
-		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 	case ast.NullExpr:
 		val := Value{}
 		val.NewNull()
 		frame.Constants = append(frame.Constants, val)
-		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 	case ast.ListExpr:
 		for _, listItem := range expr.Value {
 			err := c.CompileExpression(listItem, frame)
@@ -131,20 +133,20 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 				return err
 			}
 		}
-		frame.EmitUnary(CREATE_LIST, len(expr.Value))
+		frame.EmitUnary(CREATE_LIST, len(expr.Value), expr.Range.Start.Line)
 	case ast.IfElseExpr:
 		err := c.CompileExpression(expr.Condition, frame)
 		if err != nil {
 			return err
 		}
-		frame.EmitUnary(COND_JUMP_FALSE, 0)
+		frame.EmitUnary(COND_JUMP_FALSE, 0, expr.Range.Start.Line)
 		condJumpInstrIdx := len(frame.Code) - 1
 		err = c.compileBlock(expr.IfBranch, frame)
 		if err != nil {
 			return err
 		}
 		frame.Code[condJumpInstrIdx].Arg1 = len(frame.Code) - condJumpInstrIdx
-		frame.EmitUnary(JUMP, 0)
+		frame.EmitUnary(JUMP, 0, expr.Range.Start.Line)
 		ifJumpIndx := len(frame.Code) - 1
 		err = c.compileBlock(expr.ElseBranch, frame)
 		if err != nil {
@@ -156,20 +158,20 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		frame.EmitUnary(COND_JUMP_FALSE, 0)
+		frame.EmitUnary(COND_JUMP_FALSE, 0, expr.Range.Start.Line)
 		condJumpInstrIdx := len(frame.Code) - 1
 		err = c.compileBlock(expr.IfBranch, frame)
 		if err != nil {
 			return err
 		}
 		frame.Code[condJumpInstrIdx].Arg1 = len(frame.Code) - condJumpInstrIdx
-		frame.EmitUnary(JUMP, 1)
-		frame.Emit(STORE_NULL)
+		frame.EmitUnary(JUMP, 1, expr.Range.Start.Line)
+		frame.Emit(STORE_NULL, expr.Range.Start.Line)
 	case ast.VarUseExpr:
 		if idx, ok := frame.VariableMap[expr.Identifier]; ok {
-			frame.EmitUnary(LOAD_VAR, idx)
+			frame.EmitUnary(LOAD_VAR, idx, expr.Range.Start.Line)
 		} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
-			frame.EmitUnary(LOAD_GLOBAL, idx)
+			frame.EmitUnary(LOAD_GLOBAL, idx, expr.Range.Start.Line)
 		} else {
 			return errors.New("unknown variable " + expr.Identifier)
 		}
@@ -191,7 +193,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		for _, argName := range expr.Args {
 			closureFrame.Variables = append(closureFrame.Variables, Value{})
 			closureFrame.VariableMap[argName] = len(closureFrame.Variables) - 1
-			closureFrame.EmitUnary(STORE_VAR, len(closureFrame.Variables)-1)
+			closureFrame.EmitUnary(STORE_VAR, len(closureFrame.Variables)-1, expr.Range.Start.Line)
 		}
 		err := c.compileBlock(expr.Body, &closureFrame)
 		if err != nil {
@@ -202,19 +204,19 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		closureValue := Value{}
 		closureValue.NewClosure(expr.Args, &closureFrame)
 		frame.Constants = append(frame.Constants, closureValue)
-		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1)
+		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 
 		// Now capture the values of the variables
 		for sourceIndex := range frame.Variables {
-			frame.EmitBinary(PUSH_CLOSURE_VAR, sourceIndex, sourceIndex)
+			frame.EmitBinary(PUSH_CLOSURE_VAR, sourceIndex, sourceIndex, expr.Range.Start.Line)
 		}
 		// Now capture globals - closures can not access or modify globals, only capture them into variables
 		// From langauge user POV, this means that globals can only be read from closure and and changes exist only within
 		// the closure
 		for globalIndex := range c.GlobalVariables {
 			// Target index set  - see above capturing logic.
-			// Variables are in this order: <captured vars><captured globals><lambda arguments><closure arguments>
-			frame.EmitBinary(PUSH_GLOBAL_CLOSURE_VAR, globalIndex, len(frame.Variables)+globalIndex)
+			// Variables are in this order: <captured vars><captured globals><lambda arguments><closure variables>
+			frame.EmitBinary(PUSH_GLOBAL_CLOSURE_VAR, globalIndex, len(frame.Variables)+globalIndex, expr.Range.Start.Line)
 		}
 	case ast.ClosureApplicationExpr:
 		for _, arg := range expr.Args {
@@ -227,7 +229,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		frame.Emit(CALL_CLOSURE)
+		frame.Emit(CALL_CLOSURE, expr.Range.Start.Line)
 	case ast.FunctionApplicationExpr:
 		for _, arg := range expr.Args {
 			err := c.CompileExpression(arg, frame)
@@ -239,19 +241,19 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 			if len(expr.Args) != 2 {
 				return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Expected 2 arguments, got %d", len(expr.Args))}
 			}
-			frame.Emit(ADD)
+			frame.Emit(ADD, expr.Range.Start.Line)
 		} else {
 			if idx, builtinFunc, ok := lookupBuiltin(expr.Identifier); ok {
 				if len(expr.Args) != builtinFunc.NumArgs {
 					return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Expected %d arguments, got %d", builtinFunc.NumArgs, len(expr.Args))}
 				}
-				frame.EmitUnary(CALL_BUILTIN, idx)
+				frame.EmitUnary(CALL_BUILTIN, idx, expr.Range.Start.Line)
 			} else if idx, ok := frame.VariableMap[expr.Identifier]; ok {
-				frame.EmitUnary(LOAD_VAR, idx)
+				frame.EmitUnary(LOAD_VAR, idx, expr.Range.Start.Line)
 			} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
-				frame.EmitUnary(LOAD_GLOBAL, idx)
+				frame.EmitUnary(LOAD_GLOBAL, idx, expr.Range.Start.Line)
 			} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
-				frame.EmitUnary(CALL_FUNCTION, idx)
+				frame.EmitUnary(CALL_FUNCTION, idx, expr.Range.Start.Line)
 			} else {
 				return errors.New("unknown variable or function")
 
@@ -279,7 +281,7 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 				idx = len(c.GlobalVariables) - 1
 				c.GlobalVariableMap[stmt.Identifier] = idx
 			}
-			frame.EmitUnary(STORE_GLOBAL, idx)
+			frame.EmitUnary(STORE_GLOBAL, idx, stmt.Range.Start.Line)
 		} else {
 			idx, ok := frame.VariableMap[stmt.Identifier]
 			if !ok {
@@ -287,26 +289,26 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 				idx = len(frame.Variables) - 1
 				frame.VariableMap[stmt.Identifier] = idx
 			}
-			frame.EmitUnary(STORE_VAR, idx)
+			frame.EmitUnary(STORE_VAR, idx, stmt.Range.Start.Line)
 		}
-		frame.Emit(STORE_NULL)
+		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.ImportStmt:
-		frame.Emit(STORE_NULL)
+		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.WhileStmt:
 		condStartIdx := len(frame.Code) - 1
 		err := c.CompileExpression(stmt.Condition, frame)
 		if err != nil {
 			return err
 		}
-		frame.EmitUnary(COND_JUMP_FALSE, 0)
+		frame.EmitUnary(COND_JUMP_FALSE, 0, stmt.Range.Start.Line)
 		condJumpIdx := len(frame.Code) - 1
 		err = c.compileBlock(stmt.Body, frame)
 		if err != nil {
 			return err
 		}
 		frame.Code[condJumpIdx].Arg1 = len(frame.Code) - condJumpIdx
-		frame.EmitUnary(JUMP, condStartIdx-len(frame.Code))
-		frame.Emit(STORE_NULL)
+		frame.EmitUnary(JUMP, condStartIdx-len(frame.Code), stmt.Range.Start.Line)
+		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.FuncDefStmt:
 		functionFrame := Frame{}
 		functionFrame.New()
@@ -315,7 +317,7 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			functionFrame.Variables = append(functionFrame.Variables, Value{})
 			functionFrame.FunctionArguments = stmt.Args
 			// Store each argument from the stack into the variables array
-			functionFrame.EmitUnary(STORE_VAR, len(stmt.Args)-(i+1))
+			functionFrame.EmitUnary(STORE_VAR, len(stmt.Args)-(i+1), stmt.Range.Start.Line)
 		}
 		err := c.compileBlock(stmt.Body, &functionFrame)
 		if err != nil {
@@ -324,7 +326,7 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		c.Functions = append(c.Functions, &functionFrame)
 		functionId := len(c.Functions) - 1
 		c.FunctionMap[stmt.Identifier] = functionId
-		frame.Emit(STORE_NULL)
+		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	default:
 		return errors.New("unsupported statement")
 	}
