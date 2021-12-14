@@ -60,7 +60,6 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 		}
 		frame.EmitUnary(CALL_FUNCTION, mainIdx)
 	} else {
-	outer:
 		for _, exprOrStmt := range astResult.Asts {
 			if exprOrStmt.Kind == ast.ExprType {
 				err := c.CompileExpression(exprOrStmt.Expression, &frame)
@@ -68,16 +67,15 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 					return CompileResult{}, err
 				}
 			} else {
-				if varStmt, ok := exprOrStmt.Statement.(ast.VarDefStmt); ok {
-					if varStmt.IsGlobal {
-						continue outer
+				_, isFunction := exprOrStmt.Statement.(ast.FuncDefStmt)
+				_, isGlobal := exprOrStmt.Statement.(ast.VarDefStmt)
+				if !isFunction && !isGlobal {
+					err := c.CompileStatement(exprOrStmt.Statement, &frame)
+					if err != nil {
+						return CompileResult{}, err
 					}
 				}
 
-				err := c.CompileStatement(exprOrStmt.Statement, &frame)
-				if err != nil {
-					return CompileResult{}, err
-				}
 			}
 		}
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Frame struct {
@@ -182,10 +183,9 @@ func printStack(stack []Value) {
 
 func Main() {
 	astRes, err := calc.Ast(`
-(def x 200)
-        (def f (lambda (l) (+ x l)))
-        (def x 1000)
-        (funcall f 5)	`)
+	(def f (lambda (x) (+ x 1)))
+	(funcall f 20)
+	`)
 	if err != nil {
 		fmt.Println("AST error", err)
 		return
@@ -199,6 +199,7 @@ func Main() {
 		fmt.Println("COMPILE error", err)
 		return
 	}
+	spew.Dump(frame)
 	fmt.Printf("Compiled in %s\n", time.Since(compileStart))
 
 	runStart := time.Now()
