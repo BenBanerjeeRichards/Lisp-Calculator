@@ -26,15 +26,63 @@ type CompileResult struct {
 	Frame           Frame
 	Functions       []*Frame
 	GlobalVariables []Value
+	MainIndex       int
 }
 
 // CompileProgram compiles the given AST into bytecode
-func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
+func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error) {
 	frame := Frame{}
 	frame.New()
 	frame.IsRootFrame = true
-	err := c.compileBlock(asts, &frame)
-	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables}, err
+	mainIndex := -1
+
+	for _, exprOrStmt := range astResult.Asts {
+		if exprOrStmt.Kind == ast.StmtType {
+			switch stmt := exprOrStmt.Statement.(type) {
+			case ast.VarDefStmt:
+				err := c.CompileStatement(stmt, &frame)
+				if err != nil {
+					return CompileResult{}, err
+				}
+			case ast.FuncDefStmt:
+				err := c.CompileStatement(stmt, &frame)
+				if err != nil {
+					return CompileResult{}, err
+				}
+			}
+		}
+	}
+
+	if mainIdx, ok := c.FunctionMap["main"]; ok {
+		mainIndex = mainIdx
+		if len(c.Functions[mainIdx].FunctionArguments) == 1 {
+			frame.Emit(PUSH_ARGS)
+		}
+		frame.EmitUnary(CALL_FUNCTION, mainIdx)
+	} else {
+	outer:
+		for _, exprOrStmt := range astResult.Asts {
+			if exprOrStmt.Kind == ast.ExprType {
+				err := c.CompileExpression(exprOrStmt.Expression, &frame)
+				if err != nil {
+					return CompileResult{}, err
+				}
+			} else {
+				if varStmt, ok := exprOrStmt.Statement.(ast.VarDefStmt); ok {
+					if varStmt.IsGlobal {
+						continue outer
+					}
+				}
+
+				err := c.CompileStatement(exprOrStmt.Statement, &frame)
+				if err != nil {
+					return CompileResult{}, err
+				}
+			}
+		}
+	}
+
+	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables, MainIndex: mainIndex}, nil
 }
 
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
@@ -52,7 +100,6 @@ func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
 		} else {
 			return errors.New("unknown expression type")
 		}
-
 	}
 	return nil
 }
@@ -126,7 +173,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
 			frame.EmitUnary(LOAD_GLOBAL, idx)
 		} else {
-			return errors.New("unknown variable")
+			return errors.New("unknown variable " + expr.Identifier)
 		}
 	case ast.ClosureDefExpr:
 		closureFrame := Frame{}
@@ -219,16 +266,6 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 	return nil
 }
 
-func lookupBuiltin(identifier string) (int, Builtin, bool) {
-	for i, item := range Builtins {
-		if item.Identifier == identifier {
-			return i, item, true
-		}
-	}
-
-	return 0, Builtin{}, false
-}
-
 func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 	switch stmt := stmtExpr.(type) {
 	case ast.VarDefStmt:
@@ -278,6 +315,7 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		for i, argName := range stmt.Args {
 			functionFrame.VariableMap[argName] = i
 			functionFrame.Variables = append(functionFrame.Variables, Value{})
+			functionFrame.FunctionArguments = stmt.Args
 			// Store each argument from the stack into the variables array
 			functionFrame.EmitUnary(STORE_VAR, len(stmt.Args)-(i+1))
 		}
@@ -293,4 +331,14 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		return errors.New("unsupported statement")
 	}
 	return nil
+}
+
+func lookupBuiltin(identifier string) (int, Builtin, bool) {
+	for i, item := range Builtins {
+		if item.Identifier == identifier {
+			return i, item, true
+		}
+	}
+
+	return 0, Builtin{}, false
 }

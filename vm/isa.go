@@ -72,6 +72,9 @@ const (
 
 	// Call the closure at the top of stack
 	CALL_CLOSURE
+
+	// PUSH_ARGS pushes command line arguments onto stack as List<String>
+	PUSH_ARGS
 )
 
 func opcodeToString(op int) string {
@@ -112,8 +115,42 @@ func opcodeToString(op int) string {
 		return "PUSH_GLOBAL_CLOSURE_VAR"
 	case CALL_CLOSURE:
 		return "CALL_CLOSURE"
+	case PUSH_ARGS:
+		return "PUSH_ARGS"
 
 	default:
 		return fmt.Sprintf("<%d>", op)
 	}
+}
+
+type Instruction struct {
+	Opcode int
+	Arg1   int
+	Arg2   int
+}
+
+func (i Instruction) String() string {
+	return fmt.Sprintf("%s %d %d", opcodeToString(i.Opcode), i.Arg1, i.Arg2)
+}
+
+func (i Instruction) DetailedString(frame *Frame) string {
+	showArg1 := true
+	showArg2 := i.Opcode == PUSH_GLOBAL_CLOSURE_VAR || i.Opcode == PUSH_CLOSURE_VAR
+	detail := ""
+	if i.Opcode == LOAD_CONST {
+		detail = frame.Constants[i.Arg1].ToString()
+	}
+
+	str := opcodeToString(i.Opcode)
+	if showArg1 {
+		str += " " + fmt.Sprintf("%d", i.Arg1)
+	}
+	if showArg2 {
+		str += " " + fmt.Sprintf("%d", i.Arg1)
+	}
+	if len(detail) > 0 {
+		str += "\t(" + detail + ")"
+	}
+
+	return str
 }

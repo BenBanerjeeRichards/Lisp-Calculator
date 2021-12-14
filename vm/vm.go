@@ -8,16 +8,6 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/eval"
 )
 
-type Instruction struct {
-	Opcode int
-	Arg1   int
-	Arg2   int
-}
-
-func (i Instruction) String() string {
-	return fmt.Sprintf("%s %d %d", opcodeToString(i.Opcode), i.Arg1, i.Arg2)
-}
-
 type Frame struct {
 	Code              []Instruction
 	Constants         []Value
@@ -49,21 +39,15 @@ func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int) {
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1, Arg2: arg2})
 }
 
-type ClosureValue struct {
-	Args []string
-	Body *Frame
-}
-
-func EvalInstructions(compileRes CompileResult) Value {
+func Eval(compileRes CompileResult, programArgs []string) Value {
 	stack := []Value{}
-	return evalInstructions(&compileRes.GlobalVariables, compileRes.Functions, compileRes.Frame, stack)
+	return evalInstructions(programArgs, &compileRes.GlobalVariables, compileRes.Functions, compileRes.Frame, stack)
 }
 
-func evalInstructions(globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) Value {
-	// POC, very inefficient (especially the stack)
+func evalInstructions(programArgs []string, globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) Value {
 	// fmt.Println("==========================")
 	// for _, instr := range frame.Code {
-	// 	fmt.Println(instr)
+	// 	fmt.Println(instr.DetailedString(&frame))
 	// }
 	// fmt.Println("--------------------------")
 
@@ -133,10 +117,20 @@ out:
 			stack = append(stack, val)
 		case RETURN:
 			break out
+		case PUSH_ARGS:
+			argVal := Value{}
+			argsAsValues := []Value{}
+			for _, arg := range programArgs {
+				val := Value{}
+				val.NewString(arg)
+				argsAsValues = append(argsAsValues, val)
+			}
+			argVal.NewList(argsAsValues)
+			stack = append(stack, argVal)
 		case CALL_FUNCTION:
 			// TODO handle globals
 			function := functions[instr.Arg1]
-			val := evalInstructions(globalVariables, functions, *function, stack)
+			val := evalInstructions(programArgs, globalVariables, functions, *function, stack)
 			stack = append(stack, val)
 		case PUSH_CLOSURE_VAR:
 			closure := stack[len(stack)-1]
@@ -161,7 +155,7 @@ out:
 			if closure.Kind != ClosureType {
 				panic("bad type closure")
 			}
-			val := evalInstructions(globalVariables, functions, *closure.Closure.Body, stack)
+			val := evalInstructions(programArgs, globalVariables, functions, *closure.Closure.Body, stack)
 			stack = append(stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
@@ -188,29 +182,10 @@ func printStack(stack []Value) {
 
 func Main() {
 	astRes, err := calc.Ast(`
-	(defun isPrime (n)
-    (def prime true)
-    (if (= n 1)
-        false
-        ((def i 2)
-        (while (and prime (<= i (sqrt n)))
-            (if (= 0 (mod n i))(def prime false))
-            (def i (+ i 1)))))
-    (prime)
-	)	
-
-	(defun euler7 ()
-		(def primeCount 0)
-		(def i 2)
-		(while (not (= primeCount 10001))
-			(if (isPrime i)(
-				(def primeCount (+ 1 primeCount))))
-			(def i (+ i 1))
-		)
-		(- i 1)
-	)
-	(euler7)
-	`)
+(def x 200)
+        (def f (lambda (l) (+ x l)))
+        (def x 1000)
+        (funcall f 5)	`)
 	if err != nil {
 		fmt.Println("AST error", err)
 		return
@@ -219,7 +194,7 @@ func Main() {
 	c := Compiler{}
 	c.New()
 	compileStart := time.Now()
-	frame, err := c.CompileProgram(astRes.Asts)
+	frame, err := c.CompileProgram(astRes)
 	if err != nil {
 		fmt.Println("COMPILE error", err)
 		return
@@ -227,7 +202,7 @@ func Main() {
 	fmt.Printf("Compiled in %s\n", time.Since(compileStart))
 
 	runStart := time.Now()
-	val := EvalInstructions(frame)
+	val := Eval(frame, []string{})
 	fmt.Printf("Ran in %s\n", time.Since(runStart))
 
 	fmt.Println(val.ToString())

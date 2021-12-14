@@ -11,6 +11,7 @@ type Ast struct {
 type VarDefStmt struct {
 	Identifier string
 	Value      Expr
+	IsGlobal   bool
 	Range      types.FileRange
 }
 

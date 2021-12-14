@@ -24,6 +24,11 @@ type Value struct {
 	Closure ClosureValue
 }
 
+type ClosureValue struct {
+	Args []string
+	Body *Frame
+}
+
 func (v *Value) NewNum(value float64) {
 	v.Kind = NumType
 	v.Num = value

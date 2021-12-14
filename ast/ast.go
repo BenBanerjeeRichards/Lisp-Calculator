@@ -360,7 +360,7 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 				Detail: err.Error(),
 				Range:  node.Children[2].Range}
 		}
-		varAst, err := VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
+		varAst, err := VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range, IsGlobal: isRoot}, nil
 		if isRoot && err == nil {
 			constructor.GlobalVariables[varAst.Identifier] = &varAst
 		}

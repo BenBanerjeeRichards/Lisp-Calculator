@@ -268,7 +268,6 @@ var Builtins []Builtin = []Builtin{
 			}
 			val := Value{}
 			val.NewString(fmt.Sprintf("%s%s", lString, rString))
-			fmt.Printf(val.String)
 			return val, nil
 		},
 	},
@@ -287,7 +286,11 @@ var Builtins []Builtin = []Builtin{
 		Identifier: "print",
 		NumArgs:    1,
 		Function: func(v []Value) (Value, error) {
-			fmt.Printf(v[0].String)
+			if v[0].Kind == StringType {
+				fmt.Print(v[0].String)
+			} else {
+				fmt.Print(v[0].ToString())
+			}
 			val := Value{}
 			val.NewNull()
 			return val, nil
