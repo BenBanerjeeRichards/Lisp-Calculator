@@ -195,7 +195,8 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 		}
 
 		// Push arguments onto stack
-		for _, argName := range expr.Args {
+		for i := range expr.Args {
+			argName := expr.Args[len(expr.Args)-(i+1)]
 			closureFrame.Variables = append(closureFrame.Variables, Value{})
 			closureFrame.VariableMap[argName] = len(closureFrame.Variables) - 1
 			closureFrame.EmitUnary(STORE_VAR, len(closureFrame.Variables)-1, expr.Range.Start.Line)

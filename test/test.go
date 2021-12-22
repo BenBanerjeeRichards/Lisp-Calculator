@@ -500,6 +500,10 @@ func Run() {
 	 (f)
 	 (x)
 	`, 10)
+	r.ExpectNumber(`
+	  (def f (lambda (a b) (- a b)))
+	  (funcall f 20 10)
+	`, 10)
 
 	// Functions can used before declaration
 	r.ExpectNumber(`
