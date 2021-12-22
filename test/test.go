@@ -138,7 +138,7 @@ func (r *Runner) ExpectNull(code string) bool {
 	if evalResult, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.NullType {
 			r.numFailed += 1
-			fmt.Printf("Failed: %s\nReason: Expected null but got type %s\n", code, evalResult.Kind)
+			fmt.Printf("Failed: %s\nReason: Expected null but got type %s (%s)\n", code, evalResult.Kind, evalResult.ToString())
 			return false
 		}
 		r.numPassed += 1
@@ -501,6 +501,28 @@ func Run() {
 	 (x)
 	`, 10)
 
+	// Functions can used before declaration
+	r.ExpectNumber(`
+	(f 20 )
+    (defun f (x) (+ x 10))
+    `, 30)
+
+	// Strange but due to function hoisting
+	r.ExpectNumber(`
+	(f 20 )
+    (defun f (x) (+ x 10))
+    `, 30)
+
+	r.ExpectNumber(`
+	(def y (f 20))
+    (defun f (x) (+ x 10))
+    (y)`, 30)
+
+	r.ExpectNumber(`
+	(defun g (x) (f x))
+    (defun f (x) (+ x 10))
+     (g 20)`, 30)
+
 	// Main function
 	r.ExpectNumber(`
 	(100)
@@ -525,12 +547,6 @@ func Run() {
 
 	r.ExpectError(`(defun main (a b) a)`)
 
-	// Imports eval to null
-	r.ExpectError("(import) (10)")
-	r.ExpectNull(`(import "hello")`)
-	r.ExpectNull(`(import "hello" "world")`)
-	r.ExpectNull(`(import "hello" "world" "another")`)
-
 	// Concat
 	r.ExpectString(`(concat "Hello " "World")`, "Hello World")
 
@@ -540,6 +556,16 @@ func Run() {
 	(def x 20);
 	(def y 10); Inline comment example
 	 (x)
+	`, 20)
+
+	r.ExpectNumber(`
+	; Test comment string
+	; This is a comment
+	 (20)
+	`, 20)
+	r.ExpectNumber(`
+	;; Test comment; string;
+	 (20)
 	`, 20)
 
 	fmt.Print("\033[1m")

@@ -30,22 +30,27 @@ type CompileResult struct {
 }
 
 // CompileProgram compiles the given AST into bytecode
-func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error) {
+func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 	frame := Frame{}
 	frame.New()
 	frame.IsRootFrame = true
 	mainIndex := -1
 
-	for _, exprOrStmt := range astResult.Asts {
+	for _, exprOrStmt := range asts {
 		if exprOrStmt.Kind == ast.StmtType {
 			switch stmt := exprOrStmt.Statement.(type) {
-			case ast.VarDefStmt:
-				err := c.CompileStatement(stmt, &frame)
-				if err != nil {
-					return CompileResult{}, err
-				}
 			case ast.FuncDefStmt:
-				err := c.CompileStatement(stmt, &frame)
+				c.Functions = append(c.Functions, &Frame{})
+				c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
+			}
+		}
+	}
+
+	for _, exprOrStmt := range asts {
+		if exprOrStmt.Kind == ast.StmtType {
+			switch stmt := exprOrStmt.Statement.(type) {
+			case ast.VarDefStmt, ast.FuncDefStmt:
+				err := c.compileStatement(stmt, &frame)
 				if err != nil {
 					return CompileResult{}, err
 				}
@@ -62,9 +67,9 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 		}
 		frame.EmitUnary(CALL_FUNCTION, mainIdx, -1)
 	} else {
-		for _, exprOrStmt := range astResult.Asts {
+		for _, exprOrStmt := range asts {
 			if exprOrStmt.Kind == ast.ExprType {
-				err := c.CompileExpression(exprOrStmt.Expression, &frame)
+				err := c.compileExpression(exprOrStmt.Expression, &frame)
 				if err != nil {
 					return CompileResult{}, err
 				}
@@ -72,7 +77,7 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 				_, isFunction := exprOrStmt.Statement.(ast.FuncDefStmt)
 				_, isGlobal := exprOrStmt.Statement.(ast.VarDefStmt)
 				if !isFunction && !isGlobal {
-					err := c.CompileStatement(exprOrStmt.Statement, &frame)
+					err := c.compileStatement(exprOrStmt.Statement, &frame)
 					if err != nil {
 						return CompileResult{}, err
 					}
@@ -88,12 +93,12 @@ func (c *Compiler) CompileProgram(astResult ast.AstResult) (CompileResult, error
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
 	for _, exprOrStmt := range asts {
 		if exprOrStmt.Kind == ast.ExprType {
-			err := c.CompileExpression(exprOrStmt.Expression, frame)
+			err := c.compileExpression(exprOrStmt.Expression, frame)
 			if err != nil {
 				return err
 			}
 		} else if exprOrStmt.Kind == ast.StmtType {
-			err := c.CompileStatement(exprOrStmt.Statement, frame)
+			err := c.compileStatement(exprOrStmt.Statement, frame)
 			if err != nil {
 				return err
 			}
@@ -104,7 +109,7 @@ func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
 	return nil
 }
 
-func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
+func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 	switch expr := exprNode.(type) {
 	case ast.NumberExpr:
 		val := Value{}
@@ -128,14 +133,14 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		frame.EmitUnary(LOAD_CONST, len(frame.Constants)-1, expr.Range.Start.Line)
 	case ast.ListExpr:
 		for _, listItem := range expr.Value {
-			err := c.CompileExpression(listItem, frame)
+			err := c.compileExpression(listItem, frame)
 			if err != nil {
 				return err
 			}
 		}
 		frame.EmitUnary(CREATE_LIST, len(expr.Value), expr.Range.Start.Line)
 	case ast.IfElseExpr:
-		err := c.CompileExpression(expr.Condition, frame)
+		err := c.compileExpression(expr.Condition, frame)
 		if err != nil {
 			return err
 		}
@@ -154,7 +159,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		}
 		frame.Code[ifJumpIndx].Arg1 = len(frame.Code) - (ifJumpIndx + 1)
 	case ast.IfOnlyExpr:
-		err := c.CompileExpression(expr.Condition, frame)
+		err := c.compileExpression(expr.Condition, frame)
 		if err != nil {
 			return err
 		}
@@ -220,19 +225,19 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		}
 	case ast.ClosureApplicationExpr:
 		for _, arg := range expr.Args {
-			err := c.CompileExpression(arg, frame)
+			err := c.compileExpression(arg, frame)
 			if err != nil {
 				return err
 			}
 		}
-		err := c.CompileExpression(expr.Closure, frame)
+		err := c.compileExpression(expr.Closure, frame)
 		if err != nil {
 			return err
 		}
 		frame.Emit(CALL_CLOSURE, expr.Range.Start.Line)
 	case ast.FunctionApplicationExpr:
 		for _, arg := range expr.Args {
-			err := c.CompileExpression(arg, frame)
+			err := c.compileExpression(arg, frame)
 			if err != nil {
 				return err
 			}
@@ -265,10 +270,10 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 	return nil
 }
 
-func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
+func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 	switch stmt := stmtExpr.(type) {
 	case ast.VarDefStmt:
-		err := c.CompileExpression(stmt.Value, frame)
+		err := c.compileExpression(stmt.Value, frame)
 		if err != nil {
 			return err
 		}
@@ -295,7 +300,7 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.WhileStmt:
 		condStartIdx := len(frame.Code) - 1
-		err := c.CompileExpression(stmt.Condition, frame)
+		err := c.compileExpression(stmt.Condition, frame)
 		if err != nil {
 			return err
 		}
@@ -322,9 +327,12 @@ func (c *Compiler) CompileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		if err != nil {
 			return err
 		}
-		c.Functions = append(c.Functions, &functionFrame)
-		functionId := len(c.Functions) - 1
-		c.FunctionMap[stmt.Identifier] = functionId
+		if funcIdx, ok := c.FunctionMap[stmt.Identifier]; ok {
+			c.Functions[funcIdx] = &functionFrame
+		} else {
+			c.Functions = append(c.Functions, &functionFrame)
+			c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
+		}
 		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	default:
 		return errors.New("unsupported statement")

@@ -41,3 +41,12 @@ func doParseTreeToDot(node parser.Node, builder *strings.Builder, i *int) {
 		doParseTreeToDot(child, builder, i)
 	}
 }
+
+func FileExists(filename string) bool {
+	// https://stackoverflow.com/a/57791506/6404474
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}

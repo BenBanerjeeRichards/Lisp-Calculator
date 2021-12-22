@@ -63,14 +63,17 @@ func (t *Tokeniser) nextChar() uint8 {
 	return t.Current()
 }
 
-func (t *Tokeniser) consumeSpaces() {
+func (t *Tokeniser) consumeSpaces() bool {
+	consumed := false
 	for !t.isEOF() && isSpace(t.Current()) {
+		consumed = true
 		if t.Current() == '\n' {
 			t.line += 1
 			t.col = 1
 		}
 		t.nextChar()
 	}
+	return consumed
 }
 
 func (t Tokeniser) currentPos() types.FilePos {
@@ -110,20 +113,29 @@ func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, types.File
 	return acc, types.FileRange{Start: start, End: t.currentPos()}
 }
 
-func (t *Tokeniser) consumeComment() {
+func (t *Tokeniser) consumeComment() bool {
 	if t.Current() != ';' {
-		return
+		return false
 	}
 	for !t.isEOF() && t.Current() != '\n' {
 		t.nextChar()
 	}
+	return true
+}
+
+func (t *Tokeniser) consumeSpacesAndCommments() {
+	somethingConsumed := true
+	for somethingConsumed {
+		somethingConsumed = false
+		somethingConsumed = somethingConsumed || t.consumeComment()
+		somethingConsumed = somethingConsumed || t.consumeSpaces()
+		somethingConsumed = somethingConsumed || t.consumeComment()
+		somethingConsumed = somethingConsumed || t.consumeSpaces()
+	}
 }
 
 func (t *Tokeniser) nextToken() (Token, bool) {
-	t.consumeComment()
-	t.consumeSpaces()
-	t.consumeComment()
-	t.consumeSpaces()
+	t.consumeSpacesAndCommments()
 	nextChar := t.Current()
 	start := t.currentPos()
 	if nextChar == '(' {

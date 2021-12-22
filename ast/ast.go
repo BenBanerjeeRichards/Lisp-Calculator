@@ -50,10 +50,8 @@ type Import struct {
 }
 
 type AstResult struct {
-	Asts            []Ast
-	GlobalVariables map[string]*VarDefStmt
-	Functions       map[string]*FuncDefStmt
-	Imports         []Import
+	Asts    []Ast
+	Imports []Import
 }
 
 func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstResult, error) {
@@ -61,7 +59,7 @@ func (constructor *AstConstructor) CreateAst(rootExpression parser.Node) (AstRes
 	if err != nil {
 		return AstResult{}, err
 	}
-	return AstResult{Asts: asts, GlobalVariables: constructor.GlobalVariables, Functions: constructor.Functions, Imports: constructor.Imports}, nil
+	return AstResult{Asts: asts, Imports: constructor.Imports}, nil
 }
 
 func (constructor *AstConstructor) createAst(expr parser.Node, isRoot bool) ([]Ast, error) {
