@@ -173,7 +173,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 		} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
 			frame.EmitUnary(LOAD_GLOBAL, idx, expr.Range.Start.Line)
 		} else {
-			return errors.New("unknown variable " + expr.Identifier)
+			return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Unknown variable %s", expr.Identifier)}
 		}
 	case ast.ClosureDefExpr:
 		closureFrame := Frame{}
@@ -255,8 +255,7 @@ func (c *Compiler) CompileExpression(exprNode ast.Expr, frame *Frame) error {
 			} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
 				frame.EmitUnary(CALL_FUNCTION, idx, expr.Range.Start.Line)
 			} else {
-				return errors.New("unknown variable or function")
-
+				return types.Error{Range: expr.Range, Simple: fmt.Sprintf("Unknown identifier %s", expr.Identifier)}
 			}
 		}
 	default:

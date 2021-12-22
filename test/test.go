@@ -149,14 +149,25 @@ func (r *Runner) ExpectNull(code string) bool {
 }
 
 func (r *Runner) ExpectError(code string) bool {
-	_, err := calc.Ast(code)
+	ast, err := calc.Ast(code)
 	if err != nil {
 		r.numPassed += 1
 		return true
 	}
-	// TODO fix this when runtime errors implemented
+	c := vm.Compiler{}
+	c.New()
+	compileRes, err := c.CompileProgram(ast)
+	if err != nil {
+		r.numPassed += 1
+		return true
+	}
+	res, err := vm.Eval(compileRes, []string{})
+	if err != nil {
+		r.numPassed += 1
+		return true
+	}
 	r.numFailed += 1
-	fmt.Printf("Failed: %s\nReason: Expected an error but code compiled \n", code)
+	fmt.Printf("Failed: %s\nReason: Expected an error but code compiled and eval'd to %v \n", code, res)
 	return false
 }
 

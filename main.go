@@ -8,23 +8,10 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/test"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 	"github.com/benbanerjeerichards/lisp-calculator/util"
-	"github.com/benbanerjeerichards/lisp-calculator/vm"
 )
 
 func main() {
 	args := os.Args[1:]
-	if len(args) == 0 {
-		calc.RunRepl()
-	}
-	if len(args) == 1 && args[0] == "-i" {
-		calc.RunRepl()
-		return
-	}
-	if len(args) == 1 && args[0] == "-v" {
-		vm.Main()
-		return
-	}
-
 	if len(args) == 1 && args[0] == "-t" {
 		test.Run()
 		return

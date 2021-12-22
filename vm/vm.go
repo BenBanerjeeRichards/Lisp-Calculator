@@ -2,9 +2,7 @@ package vm
 
 import (
 	"fmt"
-	"time"
 
-	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
 
@@ -198,35 +196,4 @@ func printStack(stack []Value) {
 	for i, item := range stack {
 		fmt.Println(i, item.ToString())
 	}
-}
-
-func Main() {
-	astRes, err := calc.Ast(`
-	(def f (lambda (x) (+ x 1)))
-	(- "string" 23)
-	`)
-	if err != nil {
-		fmt.Println("AST error", err)
-		return
-	}
-
-	c := Compiler{}
-	c.New()
-	compileStart := time.Now()
-	frame, err := c.CompileProgram(astRes)
-	if err != nil {
-		fmt.Println("COMPILE error", err)
-		return
-	}
-	fmt.Printf("Compiled in %s\n", time.Since(compileStart))
-
-	runStart := time.Now()
-	val, err := Eval(frame, []string{})
-	if err != nil {
-		fmt.Printf("Runtime error - %v\n", err)
-		return
-	}
-	fmt.Printf("Ran in %s\n", time.Since(runStart))
-
-	fmt.Println(val.ToString())
 }
