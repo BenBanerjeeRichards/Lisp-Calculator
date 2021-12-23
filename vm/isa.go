@@ -133,17 +133,29 @@ func (i Instruction) String() string {
 	return fmt.Sprintf("%s %d %d", opcodeToString(i.Opcode), i.Arg1, i.Arg2)
 }
 
-func (i Instruction) DetailedString(frame *Frame) string {
+func (i Instruction) DetailedString(frame *Frame, functionNames []string) string {
 	str := opcodeToString(i.Opcode)
-	return str + i.Detail(frame)
+	return str + i.Detail(frame, functionNames)
 }
 
-func (i Instruction) Detail(frame *Frame) string {
+func (i Instruction) Detail(frame *Frame, functionNames []string) string {
 	showArg1 := true
 	showArg2 := i.Opcode == PUSH_GLOBAL_CLOSURE_VAR || i.Opcode == PUSH_CLOSURE_VAR
 	detail := ""
 	if i.Opcode == LOAD_CONST {
 		detail = frame.Constants[i.Arg1].ToString()
+	}
+	if i.Opcode == CALL_BUILTIN {
+		detail = Builtins[i.Arg1].Identifier
+	}
+	if i.Opcode == CALL_FUNCTION {
+		detail = functionNames[i.Arg1]
+	}
+	if i.Opcode == LOAD_VAR {
+		v := frame.Variables[i.Arg1]
+		if v.Kind != "" {
+			detail = v.ToString()
+		}
 	}
 	str := ""
 

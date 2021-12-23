@@ -533,6 +533,13 @@ func Run() {
 	(defun sum (a b) (+ a b))
     (sum 1 (g 3))`, 201)
 
+	r.ExpectNumber(`
+	  (defun id (x) 
+	  	(20)
+		(x))
+	  (+ 5 (id 15))
+	`, 20)
+
 	// Main function
 	r.ExpectNumber(`
 	(100)

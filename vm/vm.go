@@ -18,7 +18,8 @@ type Frame struct {
 	// The root node of the frame hierarchy
 	IsRootFrame bool
 	// LineMap maps from opcode index to line number
-	LineMap []int
+	LineMap      []int
+	FunctionName string
 }
 
 func (f *Frame) New() {
@@ -29,6 +30,7 @@ func (f *Frame) New() {
 	f.FunctionArguments = make([]string, 0)
 	f.IsRootFrame = false
 	f.LineMap = []int{}
+	f.FunctionName = "."
 }
 
 func (f *Frame) Emit(opcode int, lineNumber int) {
@@ -47,12 +49,18 @@ func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int, lineNumber int) {
 }
 
 func Eval(compileRes CompileResult, programArgs []string, debug bool) (Value, error) {
-	evalulator := Evalulator{stack: []Value{}, globalVariables: &compileRes.GlobalVariables,
-		functions: compileRes.Functions, printProfile: debug, programArgs: programArgs,
-		profileWriter: tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)}
+	evalulator := Evalulator{stack: []Value{},
+		globalVariables: &compileRes.GlobalVariables,
+		functions:       compileRes.Functions,
+		programArgs:     programArgs,
+		functionNames:   compileRes.FunctionNames,
+		printProfile:    debug,
+		profileWriter:   tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)}
+
 	val, err := evalulator.evalInstructions(compileRes.Frame)
 	if debug {
 		evalulator.profileWriter.Flush()
+		fmt.Println("Final stack: ", stackToString(evalulator.stack))
 	}
 	return val, err
 }
@@ -62,6 +70,7 @@ type Evalulator struct {
 	globalVariables *[]Value
 	functions       []*Frame
 	stack           []Value
+	functionNames   []string
 
 	// printProfile is true if we should print a profile of all instructions executed, along with the resulting stack
 	printProfile  bool
@@ -166,11 +175,12 @@ out:
 				e.profileNewLine()
 			}
 			function := e.functions[instr.Arg1]
+			stackIndex := len(e.stack) - (len(function.FunctionArguments) + 1)
 			val, err := e.evalInstructions(*function)
-			_ = val
 			if err != nil {
 				return Value{}, err
 			}
+			e.stack = e.stack[:stackIndex+1]
 			e.stack = append(e.stack, val)
 		case PUSH_CLOSURE_VAR:
 			closure := e.stack[len(e.stack)-1]
@@ -216,7 +226,9 @@ out:
 }
 
 func (e *Evalulator) profileInstruction(pc int, instr Instruction, frame *Frame) {
-	fmt.Fprintf(e.profileWriter, "%d\t%s\t%s\t%s\t\n", pc, opcodeToString(instr.Opcode), instr.Detail(frame), stackToString(e.stack))
+	str := fmt.Sprintf("%d\t%s\t%s\t%s\t%s\t", pc, frame.FunctionName, opcodeToString(instr.Opcode), instr.Detail(frame, e.functionNames), stackToString(e.stack))
+	str = strings.ReplaceAll(str, "\n", "\\n")
+	fmt.Fprintf(e.profileWriter, str+"\n")
 }
 func (e *Evalulator) profileNewLine() {
 	fmt.Fprint(e.profileWriter, "\t\t\t\t\n")

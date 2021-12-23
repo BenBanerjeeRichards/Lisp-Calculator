@@ -13,6 +13,7 @@ type Compiler struct {
 	GlobalVariableMap map[string]int
 	Functions         []*Frame
 	FunctionMap       map[string]int
+	FunctionNames     []string
 }
 
 func (c *Compiler) New() {
@@ -27,6 +28,7 @@ type CompileResult struct {
 	Functions       []*Frame
 	GlobalVariables []Value
 	MainIndex       int
+	FunctionNames   []string
 }
 
 // CompileProgram compiles the given AST into bytecode
@@ -42,6 +44,7 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 			case ast.FuncDefStmt:
 				c.Functions = append(c.Functions, &Frame{})
 				c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
+				c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
 			}
 		}
 	}
@@ -87,7 +90,7 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 		}
 	}
 
-	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables, MainIndex: mainIndex}, nil
+	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables, MainIndex: mainIndex, FunctionNames: c.FunctionNames}, nil
 }
 
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
@@ -298,7 +301,7 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		}
 		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.ImportStmt:
-		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
+		// NOP
 	case ast.WhileStmt:
 		condStartIdx := len(frame.Code) - 1
 		err := c.compileExpression(stmt.Condition, frame)
@@ -321,6 +324,7 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			functionFrame.VariableMap[argName] = i
 			functionFrame.Variables = append(functionFrame.Variables, Value{})
 			functionFrame.FunctionArguments = stmt.Args
+			functionFrame.FunctionName = stmt.Identifier
 			// Store each argument from the stack into the variables array
 			functionFrame.EmitUnary(STORE_VAR, len(stmt.Args)-(i+1), stmt.Range.Start.Line)
 		}
@@ -333,8 +337,8 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		} else {
 			c.Functions = append(c.Functions, &functionFrame)
 			c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
+			c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
 		}
-		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	default:
 		return errors.New("unsupported statement")
 	}
