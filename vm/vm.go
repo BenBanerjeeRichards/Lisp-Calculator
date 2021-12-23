@@ -2,6 +2,9 @@ package vm
 
 import (
 	"fmt"
+	"os"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 )
@@ -43,36 +46,50 @@ func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int, lineNumber int) {
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1, Arg2: arg2})
 }
 
-func Eval(compileRes CompileResult, programArgs []string) (Value, error) {
-	stack := []Value{}
-	return evalInstructions(programArgs, &compileRes.GlobalVariables, compileRes.Functions, compileRes.Frame, stack)
+func Eval(compileRes CompileResult, programArgs []string, debug bool) (Value, error) {
+	evalulator := Evalulator{stack: []Value{}, globalVariables: &compileRes.GlobalVariables,
+		functions: compileRes.Functions, printProfile: debug, programArgs: programArgs,
+		profileWriter: tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)}
+	val, err := evalulator.evalInstructions(compileRes.Frame)
+	if debug {
+		evalulator.profileWriter.Flush()
+	}
+	return val, err
 }
 
-func evalInstructions(programArgs []string, globalVariables *[]Value, functions []*Frame, frame Frame, stack []Value) (Value, error) {
-	// fmt.Println("==========================")
-	// for _, instr := range frame.Code {
-	// 	fmt.Println(instr.DetailedString(&frame))
-	// }
-	// fmt.Println("--------------------------")
+type Evalulator struct {
+	programArgs     []string
+	globalVariables *[]Value
+	functions       []*Frame
+	stack           []Value
 
+	// printProfile is true if we should print a profile of all instructions executed, along with the resulting stack
+	printProfile  bool
+	profileWriter *tabwriter.Writer
+}
+
+func (e *Evalulator) evalInstructions(frame Frame) (Value, error) {
 	pc := 0
-	// TODO error handling for runtime errors
+
 out:
 	for pc < len(frame.Code) {
 		instr := frame.Code[pc]
+		if e.printProfile {
+			e.profileInstruction(pc, instr, &frame)
+		}
 		switch instr.Opcode {
 		case LOAD_CONST:
-			stack = append(stack, frame.Constants[instr.Arg1])
+			e.stack = append(e.stack, frame.Constants[instr.Arg1])
 		case STORE_NULL:
 			v := Value{}
 			v.NewNull()
-			stack = append(stack, v)
+			e.stack = append(e.stack, v)
 		case POP:
-			stack = stack[0 : len(stack)-1]
+			e.stack = e.stack[0 : len(e.stack)-1]
 		case ADD:
-			lhs := stack[len(stack)-1]
-			rhs := stack[len(stack)-2]
-			stack = stack[0 : len(stack)-2]
+			lhs := e.stack[len(e.stack)-1]
+			rhs := e.stack[len(e.stack)-2]
+			e.stack = e.stack[0 : len(e.stack)-2]
 			val := Value{}
 			if lhs.Kind != NumType {
 				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for first argument to add, got %s", lhs.Kind)}
@@ -81,119 +98,142 @@ out:
 				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for second argument to add, got %s", lhs.Kind)}
 			}
 			val.NewNum(lhs.Num + rhs.Num)
-			stack = append(stack, val)
+			e.stack = append(e.stack, val)
 		case COND_JUMP:
-			val := stack[len(stack)-1]
+			val := e.stack[len(e.stack)-1]
 			if val.Kind != BoolType {
 				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
 			}
-			stack = stack[0 : len(stack)-1]
+			e.stack = e.stack[0 : len(e.stack)-1]
 			if val.Bool {
 				pc += instr.Arg1
 			}
 		case COND_JUMP_FALSE:
-			val := stack[len(stack)-1]
+			val := e.stack[len(e.stack)-1]
 			if val.Kind != BoolType {
 				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
 			}
-			stack = stack[0 : len(stack)-1]
+			e.stack = e.stack[0 : len(e.stack)-1]
 			if !val.Bool {
 				pc += instr.Arg1
 			}
 		case JUMP:
 			pc += instr.Arg1
 		case LOAD_VAR:
-			stack = append(stack, frame.Variables[instr.Arg1])
+			e.stack = append(e.stack, frame.Variables[instr.Arg1])
 		case STORE_VAR:
-			frame.Variables[instr.Arg1] = stack[len(stack)-1]
-			stack = stack[0 : len(stack)-1]
+			frame.Variables[instr.Arg1] = e.stack[len(e.stack)-1]
+			e.stack = e.stack[0 : len(e.stack)-1]
 		case LOAD_GLOBAL:
-			stack = append(stack, (*globalVariables)[instr.Arg1])
+			e.stack = append(e.stack, (*e.globalVariables)[instr.Arg1])
 		case STORE_GLOBAL:
-			(*globalVariables)[instr.Arg1] = stack[len(stack)-1]
-			stack = stack[0 : len(stack)-1]
+			(*e.globalVariables)[instr.Arg1] = e.stack[len(e.stack)-1]
+			e.stack = e.stack[0 : len(e.stack)-1]
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
-			res, err := builtin.Function(stack[len(stack)-(builtin.NumArgs):])
+			res, err := builtin.Function(e.stack[len(e.stack)-(builtin.NumArgs):])
 			if err != nil {
 				if stdErr, ok := err.(types.Error); ok {
 					return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc]}
 				}
 				return Value{}, nil
 			}
-			stack = stack[0 : len(stack)-(builtin.NumArgs)]
-			stack = append(stack, res)
+			e.stack = e.stack[0 : len(e.stack)-(builtin.NumArgs)]
+			e.stack = append(e.stack, res)
 		case CREATE_LIST:
 			list := make([]Value, instr.Arg1)
 			for i := 0; i < instr.Arg1; i++ {
-				list[instr.Arg1-(i+1)] = stack[len(stack)-(1+i)]
+				list[instr.Arg1-(i+1)] = e.stack[len(e.stack)-(1+i)]
 			}
-			stack = stack[0 : len(stack)-instr.Arg1]
+			e.stack = e.stack[0 : len(e.stack)-instr.Arg1]
 			val := Value{}
 			val.NewList(list)
-			stack = append(stack, val)
+			e.stack = append(e.stack, val)
 		case RETURN:
 			break out
 		case PUSH_ARGS:
 			argVal := Value{}
 			argsAsValues := []Value{}
-			for _, arg := range programArgs {
+			for _, arg := range e.programArgs {
 				val := Value{}
 				val.NewString(arg)
 				argsAsValues = append(argsAsValues, val)
 			}
 			argVal.NewList(argsAsValues)
-			stack = append(stack, argVal)
+			e.stack = append(e.stack, argVal)
 		case CALL_FUNCTION:
-			// TODO handle globals
-			function := functions[instr.Arg1]
-			val, err := evalInstructions(programArgs, globalVariables, functions, *function, stack)
+			if e.printProfile {
+				e.profileNewLine()
+			}
+			function := e.functions[instr.Arg1]
+			val, err := e.evalInstructions(*function)
+			_ = val
 			if err != nil {
 				return Value{}, err
 			}
-			stack = append(stack, val)
+			e.stack = append(e.stack, val)
 		case PUSH_CLOSURE_VAR:
-			closure := stack[len(stack)-1]
+			closure := e.stack[len(e.stack)-1]
 			if closure.Kind != ClosureType {
 				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 			}
 			closure.Closure.Body.Variables[instr.Arg2] = frame.Variables[instr.Arg1]
-			stack[len(stack)-1] = closure
+			e.stack[len(e.stack)-1] = closure
 		case PUSH_GLOBAL_CLOSURE_VAR:
-			closure := stack[len(stack)-1]
+			closure := e.stack[len(e.stack)-1]
 			if closure.Kind != ClosureType {
 				if closure.Kind != ClosureType {
 					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 				}
 			}
-			closure.Closure.Body.Variables[instr.Arg2] = (*globalVariables)[instr.Arg2]
-			stack[len(stack)-1] = closure
+			closure.Closure.Body.Variables[instr.Arg2] = (*e.globalVariables)[instr.Arg2]
+			e.stack[len(e.stack)-1] = closure
 
 		case CALL_CLOSURE:
-			closure := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
+			closure := e.stack[len(e.stack)-1]
+			e.stack = e.stack[:len(e.stack)-1]
 			if closure.Kind != ClosureType {
 				if closure.Kind != ClosureType {
 					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 				}
 			}
-			val, err := evalInstructions(programArgs, globalVariables, functions, *closure.Closure.Body, stack)
+			val, err := e.evalInstructions(*closure.Closure.Body)
 			if err != nil {
 				return Value{}, err
 			}
-			stack = append(stack, val)
+			e.stack = append(e.stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
 		}
 		pc += 1
 	}
-
-	return stack[len(stack)-1], nil
+	if e.printProfile {
+		e.profileNewLine()
+	}
+	val := e.stack[len(e.stack)-1]
+	e.stack = e.stack[:len(e.stack)-1]
+	return val, nil
 }
 
+func (e *Evalulator) profileInstruction(pc int, instr Instruction, frame *Frame) {
+	fmt.Fprintf(e.profileWriter, "%d\t%s\t%s\t%s\t\n", pc, opcodeToString(instr.Opcode), instr.Detail(frame), stackToString(e.stack))
+}
+func (e *Evalulator) profileNewLine() {
+	fmt.Fprint(e.profileWriter, "\t\t\t\t\n")
+
+}
 func printStack(stack []Value) {
 	fmt.Println("============= stack =============")
 	for i, item := range stack {
 		fmt.Println(i, item.ToString())
 	}
+}
+
+func stackToString(stack []Value) string {
+	var sb strings.Builder
+	for _, val := range stack {
+		sb.WriteString(val.ToString())
+		sb.WriteString(" ")
+	}
+	return sb.String()
 }

@@ -134,14 +134,19 @@ func (i Instruction) String() string {
 }
 
 func (i Instruction) DetailedString(frame *Frame) string {
+	str := opcodeToString(i.Opcode)
+	return str + i.Detail(frame)
+}
+
+func (i Instruction) Detail(frame *Frame) string {
 	showArg1 := true
 	showArg2 := i.Opcode == PUSH_GLOBAL_CLOSURE_VAR || i.Opcode == PUSH_CLOSURE_VAR
 	detail := ""
 	if i.Opcode == LOAD_CONST {
 		detail = frame.Constants[i.Arg1].ToString()
 	}
+	str := ""
 
-	str := opcodeToString(i.Opcode)
 	if showArg1 {
 		str += " " + fmt.Sprintf("%d", i.Arg1)
 	}
@@ -149,8 +154,9 @@ func (i Instruction) DetailedString(frame *Frame) string {
 		str += " " + fmt.Sprintf("%d", i.Arg1)
 	}
 	if len(detail) > 0 {
-		str += "\t(" + detail + ")"
+		str += " (" + detail + ")"
 	}
 
 	return str
+
 }

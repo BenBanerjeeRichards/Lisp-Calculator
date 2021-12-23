@@ -12,25 +12,35 @@ import (
 
 func main() {
 	args := os.Args[1:]
+	if len(args) == 0 {
+		return
+	}
 	if len(args) == 1 && args[0] == "-t" {
 		test.Run()
 		return
 	}
-	if len(args) == 1 {
-		fileContents, err := util.ReadFile(args[0])
-		if err != nil {
-			fmt.Printf("Failed to open file %s\n", args[0])
-			return
-		}
-		evalResult, err := calc.ParseAndEval(fileContents, args)
-		if err != nil {
-			if astError, ok := err.(types.Error); ok {
-				fmt.Println(calc.AnnotateError(fileContents, astError))
-			} else {
-				fmt.Println(err)
-			}
-			return
-		}
-		fmt.Println(evalResult.ToString())
+	debug := false
+	if args[0] == "-D" {
+		debug = true
 	}
+
+	file := args[0]
+	if debug {
+		file = args[1]
+	}
+	fileContents, err := util.ReadFile(file)
+	if err != nil {
+		fmt.Printf("Failed to open file %s\n", file)
+		return
+	}
+	evalResult, err := calc.ParseAndEval(fileContents, args, debug)
+	if err != nil {
+		if astError, ok := err.(types.Error); ok {
+			fmt.Println(calc.AnnotateError(fileContents, astError))
+		} else {
+			fmt.Println(err)
+		}
+		return
+	}
+	fmt.Println(evalResult.ToString())
 }

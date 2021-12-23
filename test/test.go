@@ -44,7 +44,7 @@ func evalProgram(code string) (vm.Value, bool) {
 		printTestFailedErr(code, err)
 		return vm.Value{}, false
 	}
-	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"})
+	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"}, false)
 	if err != nil {
 		printTestFailedErr(code, err)
 		return vm.Value{}, false
@@ -161,7 +161,7 @@ func (r *Runner) ExpectError(code string) bool {
 		r.numPassed += 1
 		return true
 	}
-	res, err := vm.Eval(compileRes, []string{})
+	res, err := vm.Eval(compileRes, []string{}, false)
 	if err != nil {
 		r.numPassed += 1
 		return true
@@ -526,6 +526,12 @@ func Run() {
 	(defun g (x) (f x))
     (defun f (x) (+ x 10))
      (g 20)`, 30)
+
+	// Embedding function calls in arguments
+	r.ExpectNumber(`
+	(defun g (x) (200))
+	(defun sum (a b) (+ a b))
+    (sum 1 (g 3))`, 201)
 
 	// Main function
 	r.ExpectNumber(`

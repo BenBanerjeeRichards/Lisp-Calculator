@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -60,6 +61,9 @@ func (v *Value) NewClosure(args []string, body *Frame) {
 func (val Value) ToString() string {
 	switch val.Kind {
 	case NumType:
+		if math.Abs(float64(int(val.Num))-val.Num) < 0.000001 {
+			return fmt.Sprint(int(val.Num))
+		}
 		return fmt.Sprintf("%f", val.Num)
 	case StringType:
 		return "\"" + val.String + "\""

@@ -45,7 +45,7 @@ func AnnotateError(code string, error types.Error) string {
 	return output
 }
 
-func ParseAndEval(code string, programArgs []string) (vm.Value, error) {
+func ParseAndEval(code string, programArgs []string, debug bool) (vm.Value, error) {
 	asts, err := Ast(code)
 	if err != nil {
 		return vm.Value{}, err
@@ -59,7 +59,7 @@ func ParseAndEval(code string, programArgs []string) (vm.Value, error) {
 	if err != nil {
 		return vm.Value{}, err
 	}
-	evalResult, err := vm.Eval(compileRes, programArgs)
+	evalResult, err := vm.Eval(compileRes, programArgs, debug)
 	if err != nil {
 		return vm.Value{}, err
 	}
