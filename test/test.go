@@ -540,6 +540,15 @@ func Run() {
 	  (+ 5 (id 15))
 	`, 20)
 
+	r.ExpectNumber(`
+	(def g (lambda (x)
+		(20)
+		(x)
+	))
+
+	(+ 5 (funcall g 15))
+  `, 20)
+
 	// Main function
 	r.ExpectNumber(`
 	(100)

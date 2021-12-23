@@ -202,6 +202,7 @@ out:
 		case CALL_CLOSURE:
 			closure := e.stack[len(e.stack)-1]
 			e.stack = e.stack[:len(e.stack)-1]
+			stackIndex := len(e.stack) - (len(closure.Closure.Args) + 1)
 			if closure.Kind != ClosureType {
 				if closure.Kind != ClosureType {
 					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
@@ -211,6 +212,7 @@ out:
 			if err != nil {
 				return Value{}, err
 			}
+			e.stack = e.stack[:stackIndex+1]
 			e.stack = append(e.stack, val)
 		default:
 			fmt.Println("Unknown instruction", instr)
