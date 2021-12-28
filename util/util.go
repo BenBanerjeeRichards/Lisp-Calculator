@@ -42,6 +42,22 @@ func doParseTreeToDot(node parser.Node, builder *strings.Builder, i *int) {
 	}
 }
 
+func ParseTreeToString(node parser.Node) string {
+	var dotBuilder strings.Builder
+	doParseTreeToString(node, &dotBuilder, 0)
+	return dotBuilder.String()
+}
+
+func doParseTreeToString(node parser.Node, builder *strings.Builder, i int) {
+	for _, child := range node.Children {
+		for n := 1; n < i; n++ {
+			builder.WriteString("\t")
+		}
+		builder.WriteString(fmt.Sprintf("%s\n", child.Label()))
+		doParseTreeToString(child, builder, i+1)
+	}
+}
+
 func FileExists(filename string) bool {
 	// https://stackoverflow.com/a/57791506/6404474
 	info, err := os.Stat(filename)

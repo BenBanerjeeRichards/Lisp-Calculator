@@ -11,7 +11,6 @@ import (
 	"github.com/benbanerjeerichards/lisp-calculator/types"
 	"github.com/benbanerjeerichards/lisp-calculator/util"
 	"github.com/benbanerjeerichards/lisp-calculator/vm"
-	"github.com/c-bata/go-prompt"
 )
 
 //go:embed stdlib.lisp
@@ -117,8 +116,4 @@ func createAstForFile(code string) (ast.AstResult, error) {
 		return ast.AstResult{}, err
 	}
 	return astTree, nil
-}
-
-func completer(d prompt.Document) []prompt.Suggest {
-	return []prompt.Suggest{}
 }

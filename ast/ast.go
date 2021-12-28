@@ -107,7 +107,7 @@ func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
 }
 
 func (constructor *AstConstructor) createAstItem(node parser.Node, isRoot bool) (Ast, error) {
-	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while" || val == "import") {
+	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while" || val == "import" || val == "defstruct") {
 		varDefStmt, err := constructor.createAstStatement(node, isRoot)
 		if err != nil {
 			return Ast{}, err
@@ -155,6 +155,10 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 		return VarUseExpr{Identifier: node.Data, Range: node.Range}, nil
 	case parser.StringNode:
 		return StringExpr{Value: node.Data, Range: node.Range}, nil
+	case parser.AccessorOperationNode:
+		return constructor.createStructAccessorOperation(node)
+	case parser.AccessorNode:
+		return constructor.createStructAccessorFromShortenedNotation(node)
 	case parser.ExpressionNode:
 		if len(node.Children) == 0 {
 			return nil, types.Error{Range: node.Range,
@@ -171,6 +175,8 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 					return constructor.createList(node)
 				} else if litNode.Data == "lambda" {
 					return constructor.createClosure(node)
+				} else if litNode.Data == "struct" {
+					return constructor.createStruct(node)
 				} else if litNode.Data == "funcall" {
 					// Force application of closure value
 					return constructor.createAppExpr(node.Children[1:], node.Range)
@@ -189,6 +195,64 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 	return nil, types.Error{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
+}
+
+func (constructor *AstConstructor) createStruct(node parser.Node) (StructExpr, error) {
+	// Create a struct, with optional initialization
+	if len(node.Children) < 2 {
+		return StructExpr{}, types.Error{Range: node.Range, Simple: "Invalid struct initialization - struct name required"}
+	}
+	structName, err := singleNestedExpr(node.Children[1])
+	if err != nil {
+		return StructExpr{}, types.Error{Range: node.Range, Simple: "Invalid struct initialization - struct name required"}
+	}
+
+	// Now consider optional initialization
+	initialValues := make(map[string]Expr)
+	for i, initializationNode := range node.Children[2:] {
+		if len(initializationNode.Children) != 2 {
+			return StructExpr{}, types.Error{Range: node.Range,
+				Simple: fmt.Sprintf("Invalid struct initialization - initalizer %d has invalid syntax: format is (fieldName value)", i+1)}
+		}
+		fieldNameNode, err := singleNestedExpr(initializationNode.Children[0])
+		if err != nil {
+			return StructExpr{}, types.Error{Range: node.Range,
+				Simple: fmt.Sprintf("Invalid struct initialization - initalizer %d has invalid syntax: format is (fieldName value)", i+1)}
+		}
+		fieldValue, err := constructor.createAstExpression(node.Children[1])
+		if err != nil {
+			return StructExpr{}, err
+		}
+		initialValues[fieldNameNode.Data] = fieldValue
+	}
+	return StructExpr{StructIdentifier: structName.Data, Values: initialValues}, nil
+}
+
+func (constructor *AstConstructor) createStructAccessorFromShortenedNotation(node parser.Node) (StructAccessorExpr, error) {
+	if len(node.Children) != 2 {
+		return StructAccessorExpr{}, types.Error{Range: node.Range, Simple: "Invalid accessor operation syntax - format is (<structName><fieldName>)"}
+	}
+
+	// This will always by a literal expression
+	structName, err := constructor.createAstExpression(node.Children[0])
+	if err != nil {
+		return StructAccessorExpr{}, err
+	}
+	return StructAccessorExpr{Range: node.Range, Struct: structName, FieldIdentifier: node.Children[1].Data}, nil
+}
+
+func (constructor *AstConstructor) createStructAccessorOperation(node parser.Node) (StructAccessorExpr, error) {
+	if len(node.Children) != 2 {
+		return StructAccessorExpr{}, types.Error{Range: node.Range, Simple: "Invalid accessor operation syntax - format is (:<field name> <struct expression>)"}
+	}
+	structExpr, err := constructor.createAstExpression(node.Children[1])
+	if err != nil {
+		return StructAccessorExpr{}, nil
+	}
+	if node.Children[0].Kind != parser.LiteralNode {
+		return StructAccessorExpr{}, types.Error{Range: node.Children[0].Range, Simple: fmt.Sprintf("Struct field name must be a literal (got %s)", node.Children[0].Kind)}
+	}
+	return StructAccessorExpr{Range: node.Range, FieldIdentifier: node.Children[0].Data, Struct: structExpr}, nil
 }
 
 func (constructor *AstConstructor) createList(node parser.Node) (Expr, error) {
@@ -342,85 +406,152 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 			Range:  node.Range}
 	}
 	if literal == "def" {
-		if len(node.Children) != 3 {
-			return nil, types.Error{
-				Simple: "Syntax error - variable declaration should take form (def <name> <value>)",
-				Detail: fmt.Sprintf("invalid variable declaration syntax - expected 3 expression children, got %d", len(node.Children)),
-				Range:  node.Range,
-			}
+		if len(node.Children) > 2 && node.Children[1].Kind == parser.ExpressionNode && len(node.Children[1].Children) > 0 &&
+			node.Children[1].Children[0].Kind == parser.AccessorNode {
+			return constructor.createStructFieldDeclaration(node)
+		} else {
+			return constructor.createVariableDeclaration(node, isRoot)
 		}
-		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
-			return nil, types.Error{Simple: "Parse error - variable name must be literal", Range: node.Children[1].Range}
-		}
-		varValue, err := constructor.createAstExpression(node.Children[2])
-		if err != nil {
-			return nil, types.Error{Simple: "Invalid variable assignment - variable assigned to statement",
-				Detail: err.Error(),
-				Range:  node.Children[2].Range}
-		}
-		varAst, err := VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
-		if isRoot && err == nil {
-			constructor.GlobalVariables[varAst.Identifier] = &varAst
-		}
-		return varAst, err
 	} else if literal == "defun" {
-		// (defun identifier (args) definition)
-		if len(node.Children) < 4 {
-			return nil, types.Error{
-				Simple: "Syntax error - function declaration should take form (defun <name> <args> <body>)",
-				Detail: fmt.Sprintf("invalid function declaration syntax - expected 4  children, got %d", len(node.Children)),
-				Range:  node.Range,
-			}
-		}
-		if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
-			return nil, types.Error{
-				Simple: "Invalid function declaration - name must be a literal",
-				Range:  node.Children[1].Range,
-			}
-		}
-		if !isRoot {
-			return nil, types.Error{Range: node.Range,
-				Simple: fmt.Sprintf("Invalid function declaration %s - functions can only be declared at top level. Use a closure instead", node.Children[1].Children[0].Data),
-			}
-		}
-
-		funcDefStmt := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
-		if _, ok = constructor.Functions[funcDefStmt.Identifier]; ok && !constructor.AllowFunctionRedeclaration {
-			return nil, types.Error{
-				Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefStmt.Identifier),
-				Range:  node.Range,
-			}
-		}
-
-		argNode := node.Children[2]
-		for _, argExpr := range argNode.Children {
-			if len(argExpr.Children) != 1 || argExpr.Children[0].Kind != parser.LiteralNode {
-				return nil, types.Error{
-					Simple: "Bad function argument - expected identifier",
-					Range:  argExpr.Range,
-				}
-			}
-			funcDefStmt.Args = append(funcDefStmt.Args, argExpr.Children[0].Data)
-		}
-
-		body, err := constructor.createFunctionBody(node.Children[3:])
-		if err != nil {
-			return nil, err
-		}
-		funcDefStmt.Body = body
-
-		constructor.Functions[funcDefStmt.Identifier] = &funcDefStmt
-		return funcDefStmt, nil
+		return constructor.createFunctionDeclaration(node, isRoot)
 	} else if literal == "while" {
 		return constructor.createWhileLoop(node)
 	} else if literal == "import" {
 		return constructor.handleImport(node)
+	} else if literal == "defstruct" {
+		return constructor.createStructDeclaration(node)
 	}
 	return nil, types.Error{
 		Simple: "Parse error",
 		Detail: fmt.Sprintf("Failed to process node - %s", node.Kind),
 		Range:  node.Range,
 	}
+}
+
+func (constructor *AstConstructor) createStructDeclaration(node parser.Node) (StructDefStmt, error) {
+	// (defstruct <name> <fields>...)
+	if len(node.Children) < 2 {
+		return StructDefStmt{}, types.Error{Range: node.Range, Simple: "Invalid defstruct - expected (defstruct <name> <fields>...)"}
+	}
+	if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
+		return StructDefStmt{}, types.Error{
+			Simple: "Invalid struct declaration - name must be a literal",
+			Range:  node.Children[1].Range,
+		}
+	}
+	ident := node.Children[1].Children[0].Data
+	fieldNames := []string{}
+	for _, fieldNode := range node.Children[2:] {
+		if len(fieldNode.Children) != 1 || fieldNode.Children[0].Kind != parser.LiteralNode {
+			return StructDefStmt{}, types.Error{
+				Simple: "Bad struct field name - expected identifier",
+				Range:  fieldNode.Range,
+			}
+		}
+		fieldNames = append(fieldNames, fieldNode.Children[0].Data)
+	}
+
+	return StructDefStmt{Identifier: ident, FieldNames: fieldNames, Range: node.Range}, nil
+}
+
+func (constructor *AstConstructor) createFunctionDeclaration(node parser.Node, isRoot bool) (FuncDefStmt, error) {
+	// (defun identifier (args) definition)
+	if len(node.Children) < 4 {
+		return FuncDefStmt{}, types.Error{
+			Simple: "Syntax error - function declaration should take form (defun <name> <args> <body>)",
+			Detail: fmt.Sprintf("invalid function declaration syntax - expected 4  children, got %d", len(node.Children)),
+			Range:  node.Range,
+		}
+	}
+	if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
+		return FuncDefStmt{}, types.Error{
+			Simple: "Invalid function declaration - name must be a literal",
+			Range:  node.Children[1].Range,
+		}
+	}
+	if !isRoot {
+		return FuncDefStmt{}, types.Error{Range: node.Range,
+			Simple: fmt.Sprintf("Invalid function declaration %s - functions can only be declared at top level. Use a closure instead", node.Children[1].Children[0].Data),
+		}
+	}
+
+	funcDefStmt := FuncDefStmt{Identifier: node.Children[1].Children[0].Data, Args: make([]string, 0), Body: make([]Ast, 0), Range: node.Range}
+	if _, ok := constructor.Functions[funcDefStmt.Identifier]; ok && !constructor.AllowFunctionRedeclaration {
+		return FuncDefStmt{}, types.Error{
+			Simple: fmt.Sprintf("Duplicate declaration of function %s", funcDefStmt.Identifier),
+			Range:  node.Range,
+		}
+	}
+
+	argNode := node.Children[2]
+	for _, argExpr := range argNode.Children {
+		if len(argExpr.Children) != 1 || argExpr.Children[0].Kind != parser.LiteralNode {
+			return FuncDefStmt{}, types.Error{
+				Simple: "Bad function argument - expected identifier",
+				Range:  argExpr.Range,
+			}
+		}
+		funcDefStmt.Args = append(funcDefStmt.Args, argExpr.Children[0].Data)
+	}
+
+	body, err := constructor.createFunctionBody(node.Children[3:])
+	if err != nil {
+		return FuncDefStmt{}, err
+	}
+	funcDefStmt.Body = body
+
+	constructor.Functions[funcDefStmt.Identifier] = &funcDefStmt
+	return funcDefStmt, nil
+
+}
+
+func (constructor *AstConstructor) createVariableDeclaration(node parser.Node, isRoot bool) (VarDefStmt, error) {
+	if len(node.Children) != 3 {
+		return VarDefStmt{}, types.Error{
+			Simple: "Syntax error - variable declaration should take form (def <name> <value>)",
+			Detail: fmt.Sprintf("invalid variable declaration syntax - expected 3 expression children, got %d", len(node.Children)),
+			Range:  node.Range,
+		}
+	}
+	if len(node.Children[1].Children) != 1 || node.Children[1].Children[0].Kind != parser.LiteralNode {
+		return VarDefStmt{}, types.Error{Simple: "Parse error - variable name must be literal", Range: node.Children[1].Range}
+	}
+	varValue, err := constructor.createAstExpression(node.Children[2])
+	if err != nil {
+		return VarDefStmt{}, types.Error{Simple: "Invalid variable assignment - variable assigned to statement",
+			Detail: err.Error(),
+			Range:  node.Children[2].Range}
+	}
+	varAst, err := VarDefStmt{Identifier: node.Children[1].Children[0].Data, Value: varValue, Range: node.Range}, nil
+	if isRoot && err == nil {
+		constructor.GlobalVariables[varAst.Identifier] = &varAst
+	}
+	return varAst, err
+}
+
+func (constructor *AstConstructor) createStructFieldDeclaration(node parser.Node) (StructFieldDeclarationStmt, error) {
+	if len(node.Children) != 3 {
+		return StructFieldDeclarationStmt{}, types.Error{
+			Simple: "Syntax error - struct field declaration should take form (def <structLiteral>:<fieldName> <value>)",
+			Range:  node.Range,
+		}
+	}
+	if !(len(node.Children) > 2 && node.Children[1].Kind == parser.ExpressionNode && len(node.Children[1].Children) > 0 &&
+		node.Children[1].Children[0].Kind == parser.AccessorNode) {
+		return StructFieldDeclarationStmt{}, types.Error{Range: node.Range, Simple: "Syntax error - struct field declaration should take form (def <structLiteral>:<fieldName> <value>)"}
+	}
+	accessorNode := node.Children[1].Children[0]
+	if len(accessorNode.Children) != 2 || accessorNode.Children[0].Kind != parser.LiteralNode || accessorNode.Children[1].Kind != parser.LiteralNode {
+		return StructFieldDeclarationStmt{}, types.Error{Range: node.Range, Simple: "Syntax error - struct field declaration should take form (def <structLiteral>:<fieldName> <value>)"}
+	}
+
+	varValue, err := constructor.createAstExpression(node.Children[2])
+	if err != nil {
+		return StructFieldDeclarationStmt{}, err
+	}
+	return StructFieldDeclarationStmt{Range: node.Range, Value: varValue,
+		StructIdentifier: accessorNode.Children[0].Data,
+		FieldIdentifier:  accessorNode.Children[1].Data}, nil
 }
 
 func (constructor *AstConstructor) handleImport(node parser.Node) (Stmt, error) {

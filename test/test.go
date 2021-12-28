@@ -230,6 +230,10 @@ func Run() {
 	r := Runner{numPassed: 0, numFailed: 0}
 	r.ExpectTokens("(x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "x"),
 		mkToken(parser.TokRBracket, "")})
+	r.ExpectTokens("(:x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "x"),
+		mkToken(parser.TokRBracket, "")})
+	r.ExpectTokens("a:b", []parser.Token{mkToken(parser.TokIdent, "a"), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "b")})
+
 	r.ExpectTokens("(5)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokNumber, "5"),
 		mkToken(parser.TokRBracket, "")})
 	r.ExpectTokens("(hello", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "hello")})
@@ -593,6 +597,32 @@ func Run() {
 	;; Test comment; string;
 	 (20)
 	`, 20)
+
+	// records
+	r.ExpectNumber(`
+	 (defstruct person name age)
+	 (def ben (struct person))
+	 (def ben:name "Ben")
+	 (def ben:age 23)
+	 (:age ben)
+	`, 23)
+	r.ExpectString(`
+	 (defstruct person name age)
+	 (def ben (struct person) (name "Ben") (age 23))
+	 (:name person)
+	`, "Ben")
+	r.ExpectNull(`
+	(defstruct person name age other)
+	(def ben (struct person) (name "Ben") (age 23))
+	(def person:name "Ben")
+	(def person:age 23)
+	(:other ben)
+   `)
+	r.ExpectString(`
+  (defstruct person name age other)
+  (defun create () (struct person (name "Ben") (age 40)))
+  (:name (create))
+ `, "Ben")
 
 	fmt.Print("\033[1m")
 	r.printSummary()

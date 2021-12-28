@@ -6,6 +6,7 @@ import (
 
 	"github.com/benbanerjeerichards/lisp-calculator/ast"
 	"github.com/benbanerjeerichards/lisp-calculator/types"
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Compiler struct {
@@ -340,6 +341,7 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
 		}
 	default:
+		spew.Dump(stmt)
 		return errors.New("unsupported statement")
 	}
 	return nil
