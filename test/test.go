@@ -599,6 +599,18 @@ func Run() {
 	`, 20)
 
 	// records
+	r.ExpectNull(`
+	(defstruct person name age)
+	(def ben (struct person))
+	(ben:age)
+   `)
+
+	r.ExpectNumber(`
+   (defstruct person name age)
+   (def ben (struct person (age 23)))
+   (ben:age)
+  `, 23)
+
 	r.ExpectNumber(`
 	 (defstruct person name age)
 	 (def ben (struct person))
