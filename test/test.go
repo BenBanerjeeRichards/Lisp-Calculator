@@ -636,6 +636,16 @@ func Run() {
   (:name (create))
  `, "Ben")
 
+	r.ExpectBool(`
+	(defstruct person name age)
+	 (def p (struct person (age 200)))
+	 (= 200 (p:age))
+	`, true)
+
+	r.ExpectError(`
+	(defstruct person name age)
+	(def p (struct person (notafield 200)))
+	`)
 	fmt.Print("\033[1m")
 	r.printSummary()
 	fmt.Print("\033[0m")

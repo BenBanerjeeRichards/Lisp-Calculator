@@ -165,7 +165,8 @@ out:
 			stru := e.stack[len(e.stack)-2]
 			indexVal := e.stack[len(e.stack)-1]
 			val := stru.Struct.FieldValues[int(indexVal.Num)]
-			e.stack[len(e.stack)-1] = val
+			e.stack = e.stack[:len(e.stack)-2]
+			e.stack = append(e.stack, val)
 		case STRUCT_FIELD_INDEX:
 			name := frame.Names[instr.Arg1]
 			stru := e.stack[len(e.stack)-1]
@@ -270,13 +271,18 @@ out:
 	if e.printProfile {
 		e.profileNewLine()
 	}
+	if len(e.stack) == 0 {
+		val := Value{}
+		val.NewNull()
+		return val, nil
+	}
 	val := e.stack[len(e.stack)-1]
 	e.stack = e.stack[:len(e.stack)-1]
 	return val, nil
 }
 
 func (e *Evalulator) profileInstruction(pc int, instr Instruction, frame *Frame) {
-	str := fmt.Sprintf("%d\t%s\t%s\t%s\t%s\t", pc, frame.FunctionName, opcodeToString(instr.Opcode), instr.Detail(frame, e.functionNames), stackToString(e.stack))
+	str := fmt.Sprintf("%d\t%s\t%s\t%s\t%s\t", frame.LineMap[pc], frame.FunctionName, opcodeToString(instr.Opcode), instr.Detail(frame, e.functionNames), stackToString(e.stack))
 	str = strings.ReplaceAll(str, "\n", "\\n")
 	fmt.Fprintf(e.profileWriter, str+"\n")
 }

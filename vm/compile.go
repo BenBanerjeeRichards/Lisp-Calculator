@@ -208,6 +208,19 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 		if structIdx, ok := c.StructMap[expr.StructIdentifier]; ok {
 			frame.EmitUnary(CREATE_STRUCT, structIdx, expr.Range.Start.Line)
 			structFields := c.Structs[structIdx]
+			// First check to see if any values exist that don't exist on struct
+			for valueFieldName, valueFieldExpr := range expr.Values {
+				found := false
+				for _, structFieldName := range structFields {
+					if structFieldName == valueFieldName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return types.Error{Range: valueFieldExpr.GetRange(), Simple: fmt.Sprintf("Struct has no field %s", valueFieldName)}
+				}
+			}
 			for _, fieldName := range structFields {
 				frame.EmitUnary(STRUCT_FIELD_INDEX, getNameIndex(fieldName, frame), expr.Range.Start.Line)
 				if valExpr, ok := expr.Values[fieldName]; ok {
