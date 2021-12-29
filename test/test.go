@@ -608,14 +608,14 @@ func Run() {
 	`, 23)
 	r.ExpectString(`
 	 (defstruct person name age)
-	 (def ben (struct person) (name "Ben") (age 23))
-	 (:name person)
+	 (def ben (struct person (name "Ben") (age 23)))
+	 (:name ben)
 	`, "Ben")
 	r.ExpectNull(`
 	(defstruct person name age other)
-	(def ben (struct person) (name "Ben") (age 23))
-	(def person:name "Ben")
-	(def person:age 23)
+	(def ben (struct person (name "Ben") (age 23)))
+	(def ben:name "Ben")
+	(def ben:age 23)
 	(:other ben)
    `)
 	r.ExpectString(`

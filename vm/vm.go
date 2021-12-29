@@ -15,6 +15,7 @@ type Frame struct {
 	Variables         []Value
 	VariableMap       map[string]int
 	FunctionArguments []string
+	Names             []string
 	// The root node of the frame hierarchy
 	IsRootFrame bool
 	// LineMap maps from opcode index to line number
@@ -28,6 +29,7 @@ func (f *Frame) New() {
 	f.Variables = make([]Value, 0)
 	f.VariableMap = make(map[string]int)
 	f.FunctionArguments = make([]string, 0)
+	f.Names = make([]string, 0)
 	f.IsRootFrame = false
 	f.LineMap = []int{}
 	f.FunctionName = "."
@@ -54,6 +56,7 @@ func Eval(compileRes CompileResult, programArgs []string, debug bool) (Value, er
 		functions:       compileRes.Functions,
 		programArgs:     programArgs,
 		functionNames:   compileRes.FunctionNames,
+		structs:         compileRes.Structs,
 		printProfile:    debug,
 		profileWriter:   tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)}
 
@@ -71,6 +74,7 @@ type Evalulator struct {
 	functions       []*Frame
 	stack           []Value
 	functionNames   []string
+	structs         []StructDecl
 
 	// printProfile is true if we should print a profile of all instructions executed, along with the resulting stack
 	printProfile  bool
@@ -78,6 +82,16 @@ type Evalulator struct {
 }
 
 func (e *Evalulator) evalInstructions(frame Frame) (Value, error) {
+	// Ensure that trace gets printed when debugging after a panic
+	defer func() {
+		if r := recover(); r != nil {
+			if e.printProfile {
+				e.profileWriter.Flush()
+			}
+			panic(r)
+		}
+	}()
+
 	pc := 0
 
 out:
@@ -138,6 +152,40 @@ out:
 		case STORE_GLOBAL:
 			(*e.globalVariables)[instr.Arg1] = e.stack[len(e.stack)-1]
 			e.stack = e.stack[0 : len(e.stack)-1]
+		case CREATE_STRUCT:
+			decl := e.structs[instr.Arg1]
+			val := Value{}
+			val.NewStruct(decl.Name, decl.FieldNames)
+			e.stack = append(e.stack, val)
+		case SET_STRUCT_FIELD:
+			fieldIndexValue := e.stack[len(e.stack)-2]
+			e.stack[len(e.stack)-3].Struct.FieldValues[int(fieldIndexValue.Num)] = e.stack[len(e.stack)-1]
+			e.stack = e.stack[:len(e.stack)-2]
+		case GET_STRUCT_FIELD:
+			stru := e.stack[len(e.stack)-2]
+			indexVal := e.stack[len(e.stack)-1]
+			val := stru.Struct.FieldValues[int(indexVal.Num)]
+			e.stack[len(e.stack)-1] = val
+		case STRUCT_FIELD_INDEX:
+			name := frame.Names[instr.Arg1]
+			stru := e.stack[len(e.stack)-1]
+			if stru.Kind != StructType {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Expected type struct, got %s", stru.Kind)}
+			}
+			// TODO (optimization) probably want to use a map to store this mapping on Value.Struct
+			idx := -1
+			for i, fieldName := range stru.Struct.FieldNames {
+				if fieldName == name {
+					idx = i
+					break
+				}
+			}
+			if idx == -1 {
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Field %s not found on struct", name)}
+			}
+			val := Value{}
+			val.NewNum(float64(idx))
+			e.stack = append(e.stack, val)
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
 			res, err := builtin.Function(e.stack[len(e.stack)-(builtin.NumArgs):])

@@ -15,6 +15,8 @@ type Compiler struct {
 	Functions         []*Frame
 	FunctionMap       map[string]int
 	FunctionNames     []string
+	Structs           [][]string
+	StructMap         map[string]int
 }
 
 func (c *Compiler) New() {
@@ -22,6 +24,8 @@ func (c *Compiler) New() {
 	c.FunctionMap = make(map[string]int)
 	c.GlobalVariableMap = make(map[string]int)
 	c.GlobalVariables = make([]Value, 0)
+	c.Structs = make([][]string, 0)
+	c.StructMap = make(map[string]int)
 }
 
 type CompileResult struct {
@@ -30,6 +34,12 @@ type CompileResult struct {
 	GlobalVariables []Value
 	MainIndex       int
 	FunctionNames   []string
+	Structs         []StructDecl
+}
+
+type StructDecl struct {
+	Name       string
+	FieldNames []string
 }
 
 // CompileProgram compiles the given AST into bytecode
@@ -46,6 +56,9 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 				c.Functions = append(c.Functions, &Frame{})
 				c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
 				c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
+			case ast.StructDefStmt:
+				c.Structs = append(c.Structs, stmt.FieldNames)
+				c.StructMap[stmt.Identifier] = len(c.Structs) - 1
 			}
 		}
 	}
@@ -80,7 +93,8 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 			} else {
 				_, isFunction := exprOrStmt.Statement.(ast.FuncDefStmt)
 				_, isGlobal := exprOrStmt.Statement.(ast.VarDefStmt)
-				if !isFunction && !isGlobal {
+				_, isStructDef := exprOrStmt.Statement.(ast.StructDefStmt)
+				if !isFunction && !isGlobal && !isStructDef {
 					err := c.compileStatement(exprOrStmt.Statement, &frame)
 					if err != nil {
 						return CompileResult{}, err
@@ -91,7 +105,13 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 		}
 	}
 
-	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables, MainIndex: mainIndex, FunctionNames: c.FunctionNames}, nil
+	structs := make([]StructDecl, len(c.Structs))
+	for name, fieldIdx := range c.StructMap {
+		structs[fieldIdx] = StructDecl{Name: name, FieldNames: c.Structs[fieldIdx]}
+	}
+
+	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables,
+		MainIndex: mainIndex, FunctionNames: c.FunctionNames, Structs: structs}, nil
 }
 
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
@@ -184,6 +204,32 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 		} else {
 			return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Unknown variable %s", expr.Identifier)}
 		}
+	case ast.StructExpr:
+		if structIdx, ok := c.StructMap[expr.StructIdentifier]; ok {
+			frame.EmitUnary(CREATE_STRUCT, structIdx, expr.Range.Start.Line)
+			structFields := c.Structs[structIdx]
+			for _, fieldName := range structFields {
+				frame.EmitUnary(STRUCT_FIELD_INDEX, getNameIndex(fieldName, frame), expr.Range.Start.Line)
+				if valExpr, ok := expr.Values[fieldName]; ok {
+					err := c.compileExpression(valExpr, frame)
+					if err != nil {
+						return err
+					}
+				} else {
+					frame.Emit(STORE_NULL, expr.Range.Start.Line)
+				}
+				frame.Emit(SET_STRUCT_FIELD, expr.Range.Start.Line)
+			}
+		} else {
+			return types.Error{Range: expr.Range, Simple: fmt.Sprintf("Use of undeclared struct %s", expr.StructIdentifier)}
+		}
+	case ast.StructAccessorExpr:
+		err := c.compileExpression(expr.Struct, frame)
+		if err != nil {
+			return err
+		}
+		frame.EmitUnary(STRUCT_FIELD_INDEX, getNameIndex(expr.FieldIdentifier, frame), expr.Range.Start.Line)
+		frame.Emit(GET_STRUCT_FIELD, expr.Range.Start.Line)
 	case ast.ClosureDefExpr:
 		closureFrame := Frame{}
 		closureFrame.New()
@@ -340,11 +386,48 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
 			c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
 		}
+	case ast.StructDefStmt:
+		if _, ok := c.StructMap[stmt.Identifier]; ok {
+			return types.Error{Range: stmt.Range, Simple: fmt.Sprintf("Duplicate declaration of struct %s", stmt.Identifier)}
+		}
+		c.Structs = append(c.Structs, stmt.FieldNames)
+		c.StructMap[stmt.Identifier] = len(c.Structs) - 1
+	case ast.StructFieldDeclarationStmt:
+		if variableIdx, ok := frame.VariableMap[stmt.StructIdentifier]; ok {
+			frame.EmitUnary(LOAD_VAR, variableIdx, stmt.Range.Start.Line)
+		} else {
+			if globalIdx, ok := c.GlobalVariableMap[stmt.StructIdentifier]; ok {
+				frame.EmitUnary(LOAD_GLOBAL, globalIdx, stmt.Range.Start.Line)
+			} else {
+				return types.Error{Range: stmt.Range, Simple: fmt.Sprintf("Unknown variable %s", stmt.StructIdentifier)}
+			}
+		}
+		frame.EmitUnary(STRUCT_FIELD_INDEX, getNameIndex(stmt.FieldIdentifier, frame), stmt.Range.Start.Line)
+		err := c.compileExpression(stmt.Value, frame)
+		if err != nil {
+			return err
+		}
+		frame.Emit(SET_STRUCT_FIELD, stmt.Range.Start.Line)
 	default:
 		spew.Dump(stmt)
 		return errors.New("unsupported statement")
 	}
 	return nil
+}
+
+func getNameIndex(nameToFind string, frame *Frame) int {
+	idx := -1
+	for i, name := range frame.Names {
+		if name == nameToFind {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		frame.Names = append(frame.Names, nameToFind)
+		idx = len(frame.Names) - 1
+	}
+	return idx
 }
 
 func lookupBuiltin(identifier string) (int, Builtin, bool) {

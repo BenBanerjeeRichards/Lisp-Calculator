@@ -13,6 +13,7 @@ const (
 	NullType    = "null"
 	ListType    = "list"
 	ClosureType = "closure"
+	StructType  = "struct"
 )
 
 // Value is a runtime value
@@ -23,11 +24,18 @@ type Value struct {
 	String  string
 	List    []Value
 	Closure ClosureValue
+	Struct  StructValue
 }
 
 type ClosureValue struct {
 	Args []string
 	Body *Frame
+}
+
+type StructValue struct {
+	TypeName    string
+	FieldNames  []string
+	FieldValues []Value
 }
 
 func (v *Value) NewNum(value float64) {
@@ -55,6 +63,11 @@ func (v *Value) NewNull() {
 func (v *Value) NewClosure(args []string, body *Frame) {
 	v.Kind = ClosureType
 	v.Closure = ClosureValue{Args: args, Body: body}
+}
+
+func (v *Value) NewStruct(structType string, fieldNames []string) {
+	v.Kind = StructType
+	v.Struct = StructValue{TypeName: structType, FieldNames: fieldNames, FieldValues: make([]Value, len(fieldNames))}
 }
 
 // Cant use Stringer interface due to name conflict
@@ -94,6 +107,16 @@ func (val Value) ToString() string {
 			}
 		}
 		return fmt.Sprintf("lambda(%s)", argString.String())
+	case StructType:
+		var str strings.Builder
+		str.WriteString(fmt.Sprintf("%s{", val.Struct.TypeName))
+		for i, fieldName := range val.Struct.FieldNames {
+			str.WriteString(fmt.Sprintf("%s:%s,", fieldName, val.Struct.FieldValues[i].ToString()))
+		}
+		str.WriteString("}")
+		return str.String()
+	case "":
+		return "<undef>"
 	default:
 		return fmt.Sprintf("Unknown type %v", val)
 	}

@@ -219,13 +219,13 @@ func (constructor *AstConstructor) createStruct(node parser.Node) (StructExpr, e
 			return StructExpr{}, types.Error{Range: node.Range,
 				Simple: fmt.Sprintf("Invalid struct initialization - initalizer %d has invalid syntax: format is (fieldName value)", i+1)}
 		}
-		fieldValue, err := constructor.createAstExpression(node.Children[1])
+		fieldValue, err := constructor.createAstExpression(initializationNode.Children[1])
 		if err != nil {
 			return StructExpr{}, err
 		}
 		initialValues[fieldNameNode.Data] = fieldValue
 	}
-	return StructExpr{StructIdentifier: structName.Data, Values: initialValues}, nil
+	return StructExpr{StructIdentifier: structName.Data, Values: initialValues, Range: node.Range}, nil
 }
 
 func (constructor *AstConstructor) createStructAccessorFromShortenedNotation(node parser.Node) (StructAccessorExpr, error) {

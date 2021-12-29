@@ -75,6 +75,23 @@ const (
 
 	// PUSH_ARGS pushes command line arguments onto stack as List<String>
 	PUSH_ARGS
+
+	// CREATE_STRUCT <structDeclarationIndex>
+	// Create a new struct of type at index structDeclarationIndex
+	CREATE_STRUCT
+
+	// SET_STRUCT_FIELD
+	// Given a struct at TOS-2, a struct field index at TOS-1 and a value at TOS, sets the struct field value
+	SET_STRUCT_FIELD
+
+	// STRUCT_FIELD_INDEX <nameIndex>
+	// For a struct at TOS, pushes the index of the field at names[nameIndex] of struct TOS.
+	// Struct NOT popped from stack
+	STRUCT_FIELD_INDEX
+
+	// GET_STRUCT_FIELD <fieldIdx>
+	// For struct at top of stack, push field value at fieldIdx onto top of stack
+	GET_STRUCT_FIELD
 )
 
 func opcodeToString(op int) string {
@@ -117,7 +134,14 @@ func opcodeToString(op int) string {
 		return "CALL_CLOSURE"
 	case PUSH_ARGS:
 		return "PUSH_ARGS"
-
+	case CREATE_STRUCT:
+		return "CREATE_STRUCT"
+	case SET_STRUCT_FIELD:
+		return "SET_STRUCT_FIELD"
+	case GET_STRUCT_FIELD:
+		return "GET_STRUCT_FIELD"
+	case STRUCT_FIELD_INDEX:
+		return "STRUCT_FIELD_INDEX"
 	default:
 		return fmt.Sprintf("<%d>", op)
 	}
