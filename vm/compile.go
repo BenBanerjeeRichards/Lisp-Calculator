@@ -421,6 +421,15 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			return err
 		}
 		frame.Emit(SET_STRUCT_FIELD, stmt.Range.Start.Line)
+	case ast.ReturnStmt:
+		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
+		frame.Emit(RETURN, stmt.Range.Start.Line)
+	case ast.ReturnValueStmt:
+		err := c.compileExpression(stmt.Value, frame)
+		if err != nil {
+			return err
+		}
+		frame.Emit(RETURN, stmt.Range.Start.Line)
 	default:
 		spew.Dump(stmt)
 		return errors.New("unsupported statement")

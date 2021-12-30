@@ -116,6 +116,15 @@ type StructExpr struct {
 	Range            types.FileRange
 }
 
+type ReturnStmt struct {
+	Range types.FileRange
+}
+
+type ReturnValueStmt struct {
+	Value Expr
+	Range types.FileRange
+}
+
 func (v VarDefStmt) GetRange() types.FileRange {
 	return v.Range
 }
@@ -190,6 +199,14 @@ func (v StructExpr) GetRange() types.FileRange {
 	return v.Range
 }
 
+func (v ReturnStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v ReturnValueStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
 // These are just to prevent assigning a statement to an expression
 // Same as what go compiler does
 func (FunctionApplicationExpr) exprType() {}
@@ -212,6 +229,8 @@ func (WhileStmt) stmtType()                  {}
 func (ImportStmt) stmtType()                 {}
 func (StructDefStmt) stmtType()              {}
 func (StructFieldDeclarationStmt) stmtType() {}
+func (ReturnStmt) stmtType()                 {}
+func (ReturnValueStmt) stmtType()            {}
 
 func (ast *Ast) newStatement(stmt Stmt) {
 	ast.Kind = StmtType

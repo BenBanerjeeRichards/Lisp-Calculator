@@ -646,6 +646,28 @@ func Run() {
 	(defstruct person name age)
 	(def p (struct person (notafield 200)))
 	`)
+
+	// Return
+	r.ExpectNumber(`
+	(defun f (x)
+    	(if (< x 10) (return 10))
+    	(+ x 200)
+	)
+	(+ (f 5) (f 50))
+	`, 260)
+	r.ExpectNull(`
+	(defun f (x)
+    	(return)
+	)
+	(f 20)
+	`)
+	r.ExpectNull(`
+	(defun f (x)
+    	(return null)
+	)
+	(f 20)
+	`)
+
 	fmt.Print("\033[1m")
 	r.printSummary()
 	fmt.Print("\033[0m")

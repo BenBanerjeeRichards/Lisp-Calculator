@@ -107,7 +107,7 @@ func safeTraverse(node parser.Node, childIndexes []int) (parser.Node, bool) {
 }
 
 func (constructor *AstConstructor) createAstItem(node parser.Node, isRoot bool) (Ast, error) {
-	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while" || val == "import" || val == "defstruct") {
+	if ok, val := nestedLiteralValue(node); ok && (val == "def" || val == "defun" || val == "while" || val == "import" || val == "defstruct" || val == "return") {
 		varDefStmt, err := constructor.createAstStatement(node, isRoot)
 		if err != nil {
 			return Ast{}, err
@@ -195,6 +195,22 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 	return nil, types.Error{Simple: "Parse Error",
 		Detail: fmt.Sprintf("unknown syntax node kind %s", node.Kind),
 		Range:  node.Range}
+}
+
+func (constructor *AstConstructor) createReturn(node parser.Node) (Stmt, error) {
+	if len(node.Children) == 1 {
+		// Just a simple (return) with now value
+		return ReturnStmt{Range: node.Range}, nil
+	}
+	if len(node.Children) == 2 {
+		// Returning a specific value, e.g. (return 23)
+		returnValue, err := constructor.createAstExpression(node.Children[1])
+		if err != nil {
+			return nil, err
+		}
+		return ReturnValueStmt{Range: node.Range, Value: returnValue}, nil
+	}
+	return nil, types.Error{Range: node.Range, Simple: "Syntax error - bad return: expected either (return) or (return <value to return>)"}
 }
 
 func (constructor *AstConstructor) createStruct(node parser.Node) (StructExpr, error) {
@@ -420,6 +436,8 @@ func (constructor *AstConstructor) createAstStatement(node parser.Node, isRoot b
 		return constructor.handleImport(node)
 	} else if literal == "defstruct" {
 		return constructor.createStructDeclaration(node)
+	} else if literal == "return" {
+		return constructor.createReturn(node)
 	}
 	return nil, types.Error{
 		Simple: "Parse error",
