@@ -44,7 +44,7 @@ func evalProgram(code string) (vm.Value, string, bool) {
 	}
 	compiler := vm.Compiler{}
 	compiler.New()
-	frame, err := compiler.CompileProgram(asts)
+	frame, err := compiler.CompileProgram("", asts)
 	if err != nil {
 		printTestFailedErr(code, err)
 		return vm.Value{}, "", false
@@ -162,7 +162,7 @@ func (r *Runner) ExpectError(code string) bool {
 	}
 	c := vm.Compiler{}
 	c.New()
-	compileRes, err := c.CompileProgram(ast)
+	compileRes, err := c.CompileProgram("", ast)
 	if err != nil {
 		r.numPassed += 1
 		return true

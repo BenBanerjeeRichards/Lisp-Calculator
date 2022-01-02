@@ -21,10 +21,11 @@ type Frame struct {
 	IsRootFrame bool
 	// LineMap maps from opcode index to line number
 	LineMap      []int
+	FilePath     string
 	FunctionName string
 }
 
-func (f *Frame) New() {
+func (f *Frame) New(filePath string) {
 	f.Code = make([]Instruction, 0)
 	f.Constants = make([]Value, 0)
 	f.Variables = make([]Value, 0)
@@ -34,6 +35,7 @@ func (f *Frame) New() {
 	f.IsRootFrame = false
 	f.LineMap = []int{}
 	f.FunctionName = "."
+	f.FilePath = filePath
 }
 
 func (f *Frame) Emit(opcode int, lineNumber int) {
@@ -210,7 +212,7 @@ out:
 				res, err := builtin.Function(e.stack[len(e.stack)-(builtin.NumArgs):])
 				if err != nil {
 					if stdErr, ok := err.(types.Error); ok {
-						return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc]}
+						return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc], FilePath: frame.FilePath}
 					}
 					return Value{}, nil
 				}
@@ -246,6 +248,10 @@ out:
 			stackIndex := len(e.stack) - (len(function.FunctionArguments) + 1)
 			val, err := e.evalInstructions(*function)
 			if err != nil {
+				if runtimeErr, ok := err.(RuntimeError); ok {
+					runtimeErr.AddStackTrace(frame.FilePath, frame.LineMap[pc])
+					return Value{}, runtimeErr
+				}
 				return Value{}, err
 			}
 			e.stack = e.stack[:stackIndex+1]

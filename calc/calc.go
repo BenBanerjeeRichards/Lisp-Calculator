@@ -55,7 +55,7 @@ func ParseAndEval(path string, code string, programArgs []string, debug bool) (v
 	compiler.New()
 
 	// loadStdLib(&evalulator)
-	compileRes, err := compiler.CompileProgram(asts)
+	compileRes, err := compiler.CompileProgram(path, asts)
 	if err != nil {
 		return vm.Value{}, err
 	}

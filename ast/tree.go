@@ -19,6 +19,7 @@ type FuncDefStmt struct {
 	Identifier string
 	Args       []string
 	Body       []Ast
+	FilePath   string
 	Range      types.FileRange
 }
 

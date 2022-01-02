@@ -43,18 +43,20 @@ type StructDecl struct {
 }
 
 // CompileProgram compiles the given AST into bytecode
-func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
+func (c *Compiler) CompileProgram(startPath string, asts []ast.Ast) (CompileResult, error) {
 	frame := Frame{}
-	frame.New()
+	frame.New(startPath)
 	frame.IsRootFrame = true
 	mainIndex := -1
 
 	c.processDeclarations(asts)
 
-	for _, exprOrStmt := range asts {
-		if exprOrStmt.Kind == ast.StmtType {
-			if _, ok := exprOrStmt.Statement.(ast.FuncDefStmt); ok {
-				err := c.compileAst(exprOrStmt, &frame)
+	for i := range asts {
+		if asts[i].Kind == ast.StmtType {
+			if funDefStmt, ok := asts[i].Statement.(ast.FuncDefStmt); ok {
+				funDefStmt.FilePath = asts[i].FilePath
+				asts[i].Statement = funDefStmt
+				err := c.compileAst(asts[i], &frame)
 				if err != nil {
 					return CompileResult{}, err
 				}
@@ -281,7 +283,7 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 		frame.Emit(GET_STRUCT_FIELD, expr.Range.Start.Line)
 	case ast.ClosureDefExpr:
 		closureFrame := Frame{}
-		closureFrame.New()
+		closureFrame.New(frame.FilePath)
 		// Capture all variables in current scope
 		closureFrame.VariableMap = make(map[string]int)
 		closureFrame.Variables = make([]Value, 0)
@@ -421,7 +423,7 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
 	case ast.FuncDefStmt:
 		functionFrame := Frame{}
-		functionFrame.New()
+		functionFrame.New(stmt.FilePath)
 		for i, argName := range stmt.Args {
 			functionFrame.VariableMap[argName] = i
 			functionFrame.Variables = append(functionFrame.Variables, Value{})
