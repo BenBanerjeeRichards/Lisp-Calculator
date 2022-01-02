@@ -2,9 +2,14 @@ package test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/util"
 	"github.com/benbanerjeerichards/lisp-calculator/vm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -31,29 +36,30 @@ func printTokensFailed(code string, message string, expected []parser.Token, act
 	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
 }
 
-func evalProgram(code string) (vm.Value, bool) {
-	asts, err := calc.Ast(code)
+func evalProgram(code string) (vm.Value, string, bool) {
+	asts, err := calc.Ast("", code)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return vm.Value{}, false
+		return vm.Value{}, "", false
 	}
 	compiler := vm.Compiler{}
 	compiler.New()
 	frame, err := compiler.CompileProgram(asts)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return vm.Value{}, false
+		return vm.Value{}, "", false
 	}
-	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"}, false)
+	var stdOut strings.Builder
+	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"}, false, &stdOut)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return vm.Value{}, false
+		return vm.Value{}, "", false
 	}
-	return evalResult, true
+	return evalResult, stdOut.String(), true
 }
 
 func (r *Runner) ExpectNumber(code string, expected float64) bool {
-	if evalResult, ok := evalProgram(code); ok {
+	if evalResult, _, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.NumType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
@@ -72,7 +78,7 @@ func (r *Runner) ExpectNumber(code string, expected float64) bool {
 }
 
 func (r *Runner) ExpectBool(code string, expected bool) bool {
-	if evalResult, ok := evalProgram(code); ok {
+	if evalResult, _, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.BoolType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
@@ -91,7 +97,7 @@ func (r *Runner) ExpectBool(code string, expected bool) bool {
 }
 
 func (r *Runner) ExpectList(code string, expected []vm.Value) bool {
-	if evalResult, ok := evalProgram(code); ok {
+	if evalResult, _, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.ListType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
@@ -117,7 +123,7 @@ func (r *Runner) ExpectList(code string, expected []vm.Value) bool {
 }
 
 func (r *Runner) ExpectString(code string, expected string) bool {
-	if evalResult, ok := evalProgram(code); ok {
+	if evalResult, _, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.StringType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
@@ -135,7 +141,7 @@ func (r *Runner) ExpectString(code string, expected string) bool {
 	return false
 }
 func (r *Runner) ExpectNull(code string) bool {
-	if evalResult, ok := evalProgram(code); ok {
+	if evalResult, _, ok := evalProgram(code); ok {
 		if evalResult.Kind != vm.NullType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected null but got type %s (%s)\n", code, evalResult.Kind, evalResult.ToString())
@@ -149,7 +155,7 @@ func (r *Runner) ExpectNull(code string) bool {
 }
 
 func (r *Runner) ExpectError(code string) bool {
-	ast, err := calc.Ast(code)
+	ast, err := calc.Ast("", code)
 	if err != nil {
 		r.numPassed += 1
 		return true
@@ -161,7 +167,7 @@ func (r *Runner) ExpectError(code string) bool {
 		r.numPassed += 1
 		return true
 	}
-	res, err := vm.Eval(compileRes, []string{}, false)
+	res, err := vm.Eval(compileRes, []string{}, false, os.Stdout)
 	if err != nil {
 		r.numPassed += 1
 		return true
@@ -210,13 +216,15 @@ func mkToken(kind string, data string) parser.Token {
 }
 
 type Runner struct {
-	numPassed int
-	numFailed int
+	numPassed       int
+	numFailed       int
+	numOutputPassed int
 }
 
 func (r Runner) printSummary() {
+	outputTests := fmt.Sprintf("(including %d output tests)", r.numOutputPassed)
 	if r.numFailed == 0 {
-		fmt.Printf("All %d tests passed\n", r.numPassed)
+		fmt.Printf("All %d tests passed %s\n", r.numPassed, outputTests)
 	} else {
 		s := "s"
 		if r.numFailed == 1 {
@@ -509,6 +517,14 @@ func Run() {
 	  (funcall f 20 10)
 	`, 10)
 
+	r.ExpectNumber(`
+	   (defstruct person age)
+	   (defun add10 (p) (def p:age (+ p:age 10)))
+	   (def me (struct person (age 23)))
+	   (add10 me)
+	   (me:age)
+	`, 33)
+
 	// Functions can used before declaration
 	r.ExpectNumber(`
 	(f 20 )
@@ -668,7 +684,66 @@ func Run() {
 	(f 20)
 	`)
 
+	r.RunOutputTest()
+
 	fmt.Print("\033[1m")
 	r.printSummary()
 	fmt.Print("\033[0m")
+}
+
+func (r *Runner) RunOutputTest() {
+	TEST_PATH := "test/output/"
+	testFolders, err := ioutil.ReadDir(TEST_PATH)
+	if err != nil {
+		fmt.Println("Faild to load output tests: ", err)
+		return
+	}
+
+	for _, fileInfo := range testFolders {
+		if !fileInfo.IsDir() {
+			fmt.Printf("WARNING - Found file %s inside test/output/. Expected only directories\n", fileInfo.Name())
+			continue
+		}
+		testDirectory := filepath.Join(TEST_PATH, fileInfo.Name())
+		testFiles, err := ioutil.ReadDir(testDirectory)
+		if err != nil {
+			fmt.Println("Faild to load test: ", testDirectory, err)
+			return
+		}
+
+		outputFile := ""
+		mainFile := ""
+		for _, testFile := range testFiles {
+			if testFile.Name() == "main.lisp" {
+				mainFile = filepath.Join(testDirectory, testFile.Name())
+			}
+			if testFile.Name() == "out.txt" {
+				outputFile = filepath.Join(testDirectory, testFile.Name())
+			}
+		}
+		if outputFile == "" {
+			fmt.Println("Failed to find out.txt inside test directory", testDirectory)
+			return
+		}
+		if mainFile == "" {
+			fmt.Println("Failed to find main.lisp inside test directory", testDirectory)
+			return
+		}
+		expectedOut, _ := util.ReadFile(outputFile)
+		mainContents, _ := util.ReadFile(mainFile)
+		_, stdout, ok := evalProgram(mainContents)
+		if !ok {
+			r.numFailed += 1
+			fmt.Println("Failed path:", mainFile)
+			continue
+		}
+		if stdout != expectedOut {
+			r.numFailed += 1
+			fmt.Println("Output test failed: ", mainFile)
+			fmt.Printf("Expected: %s\nActual: %s\n", expectedOut, stdout)
+		} else {
+			r.numPassed += 1
+			r.numOutputPassed += 1
+		}
+	}
 }

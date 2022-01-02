@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -50,13 +51,14 @@ func (f *Frame) EmitBinary(opcode int, arg1 int, arg2 int, lineNumber int) {
 	f.Code = append(f.Code, Instruction{Opcode: opcode, Arg1: arg1, Arg2: arg2})
 }
 
-func Eval(compileRes CompileResult, programArgs []string, debug bool) (Value, error) {
+func Eval(compileRes CompileResult, programArgs []string, debug bool, stdOut io.Writer) (Value, error) {
 	evalulator := Evalulator{stack: []Value{},
 		globalVariables: &compileRes.GlobalVariables,
 		functions:       compileRes.Functions,
 		programArgs:     programArgs,
 		functionNames:   compileRes.FunctionNames,
 		structs:         compileRes.Structs,
+		stdOutWriter:    stdOut,
 		printProfile:    debug,
 		profileWriter:   tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)}
 
@@ -75,6 +77,9 @@ type Evalulator struct {
 	stack           []Value
 	functionNames   []string
 	structs         []StructDecl
+
+	// Where to write stdout
+	stdOutWriter io.Writer
 
 	// printProfile is true if we should print a profile of all instructions executed, along with the resulting stack
 	printProfile  bool
@@ -189,15 +194,29 @@ out:
 			e.stack = append(e.stack, val)
 		case CALL_BUILTIN:
 			builtin := Builtins[instr.Arg1]
-			res, err := builtin.Function(e.stack[len(e.stack)-(builtin.NumArgs):])
-			if err != nil {
-				if stdErr, ok := err.(types.Error); ok {
-					return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc]}
+			if builtin.Identifier == "print" {
+				// Special case - allow overriding of stdout writer
+				valToPrint := e.stack[len(e.stack)-1]
+				if valToPrint.Kind == StringType {
+					fmt.Fprint(e.stdOutWriter, valToPrint.String)
+				} else {
+					fmt.Fprint(e.stdOutWriter, valToPrint.ToString())
 				}
-				return Value{}, nil
+				res := Value{}
+				res.NewNull()
+				e.stack = e.stack[0 : len(e.stack)-(builtin.NumArgs)]
+				e.stack = append(e.stack, res)
+			} else {
+				res, err := builtin.Function(e.stack[len(e.stack)-(builtin.NumArgs):])
+				if err != nil {
+					if stdErr, ok := err.(types.Error); ok {
+						return Value{}, RuntimeError{Simple: stdErr.Simple, Detail: stdErr.Detail, Line: frame.LineMap[pc]}
+					}
+					return Value{}, nil
+				}
+				e.stack = e.stack[0 : len(e.stack)-(builtin.NumArgs)]
+				e.stack = append(e.stack, res)
 			}
-			e.stack = e.stack[0 : len(e.stack)-(builtin.NumArgs)]
-			e.stack = append(e.stack, res)
 		case CREATE_LIST:
 			list := make([]Value, instr.Arg1)
 			for i := 0; i < instr.Arg1; i++ {

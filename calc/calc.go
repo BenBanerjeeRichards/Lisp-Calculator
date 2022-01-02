@@ -3,6 +3,7 @@ package calc
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -20,7 +21,7 @@ func AnnotateError(code string, error types.Error) string {
 	// reset := "\033[0m"
 	// bold := "\033[1m"
 	// red := "\031[1m"
-	output := fmt.Sprintf("%s - %s(%s)\n", error.Range, error.Simple, error.Detail)
+	output := fmt.Sprintf("%s", error)
 	codeLines := strings.Split(code, "\n")
 	start := error.Range.Start.Line - 2
 	end := error.Range.End.Line + 1
@@ -44,8 +45,8 @@ func AnnotateError(code string, error types.Error) string {
 	return output
 }
 
-func ParseAndEval(code string, programArgs []string, debug bool) (vm.Value, error) {
-	asts, err := Ast(code)
+func ParseAndEval(path string, code string, programArgs []string, debug bool) (vm.Value, error) {
+	asts, err := Ast(path, code)
 	if err != nil {
 		return vm.Value{}, err
 	}
@@ -58,32 +59,30 @@ func ParseAndEval(code string, programArgs []string, debug bool) (vm.Value, erro
 	if err != nil {
 		return vm.Value{}, err
 	}
-	evalResult, err := vm.Eval(compileRes, programArgs, debug)
+	evalResult, err := vm.Eval(compileRes, programArgs, debug, os.Stdout)
 	if err != nil {
 		return vm.Value{}, err
 	}
 	return evalResult, nil
 }
 
-func Ast(code string) ([]ast.Ast, error) {
-	fileAstResut, err := createAstForFile(code)
+func Ast(path string, code string) ([]ast.Ast, error) {
+	fileAstResut, err := createAstForFile(path, code)
 	if err != nil {
 		return []ast.Ast{}, err
 	}
 	asts := fileAstResut.Asts
-
 	for _, fileImport := range fileAstResut.Imports {
-		importCodePath, ok := resolveImport(fileImport.Path)
+		importCodePath, ok := resolveImport(path, fileImport.Path)
 		if !ok {
-			return []ast.Ast{}, types.Error{Range: fileImport.Range, Simple: fmt.Sprintf("Failed to resolve import `%s` - does not exist", fileImport.Path)}
+			return []ast.Ast{}, types.Error{Range: fileImport.Range, Simple: fmt.Sprintf("Failed to resolve import `%s` - does not exist", fileImport.Path), File: path}
 		}
 		codeContents, err := util.ReadFile(importCodePath)
 		if err != nil {
-			return []ast.Ast{}, types.Error{Range: fileImport.Range, Simple: fmt.Sprintf("Failed to resolve import `%s` - file read failed", fileImport.Path)}
+			return []ast.Ast{}, types.Error{Range: fileImport.Range, Simple: fmt.Sprintf("Failed to resolve import `%s` - file read failed", fileImport.Path), File: path}
 		}
-		importAsts, err := Ast(codeContents)
+		importAsts, err := Ast(importCodePath, codeContents)
 		if err != nil {
-			// TODO Need some sort of import stack trace
 			return []ast.Ast{}, err
 		}
 		// TODO qualify import
@@ -92,28 +91,50 @@ func Ast(code string) ([]ast.Ast, error) {
 	return asts, nil
 }
 
-func resolveImport(importPath string) (string, bool) {
-	// TODO this needs to be more sophisticated to resolve in a few different locations
-	fullPath, err := filepath.Abs(importPath)
-	if err != nil {
+func resolveImport(importFilePath, importPath string) (string, bool) {
+	searchPaths := make([]string, 0)
+	if len(importFilePath) > 0 {
+		searchPaths = append(searchPaths, filepath.Dir(importFilePath))
+	}
+	stdlibPath, _ := filepath.Abs("calc")
+	searchPaths = append(searchPaths, stdlibPath)
+	fullPath := ""
+	for _, searchPath := range searchPaths {
+		fullPath = filepath.Join(searchPath, importPath)
+		if util.FileExists(fullPath) {
+			break
+		}
+	}
+	if len(fullPath) == 0 {
 		return "", false
 	}
-	return fullPath, util.FileExists(fullPath)
+	return fullPath, true
 }
 
-func createAstForFile(code string) (ast.AstResult, error) {
+func createAstForFile(path string, code string) (ast.AstResult, error) {
 	tokens := parser.Tokenise(code)
 	calcParser := parser.Parser{}
 	calcParser.New(tokens)
 	syntaxTree, err := calcParser.ParseProgram()
 	if err != nil {
+		if ourErr, ok := err.(types.Error); ok {
+			ourErr.File = path
+			return ast.AstResult{}, err
+		}
 		return ast.AstResult{}, err
 	}
 	astConstruct := ast.AstConstructor{}
 	astConstruct.New()
 	astTree, err := astConstruct.CreateAst(syntaxTree)
 	if err != nil {
+		if ourErr, ok := err.(types.Error); ok {
+			ourErr.File = path
+			return ast.AstResult{}, err
+		}
 		return ast.AstResult{}, err
+	}
+	for i := range astTree.Asts {
+		astTree.Asts[i].FilePath = path
 	}
 	return astTree, nil
 }

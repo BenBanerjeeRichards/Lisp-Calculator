@@ -66,3 +66,18 @@ func FileExists(filename string) bool {
 	}
 	return !info.IsDir()
 }
+
+func SubHomeDir(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		lower := len(home) + 1
+		if lower > len(path) {
+			lower = len(path)
+		}
+		return "~/" + path[lower:]
+	}
+	return path
+}

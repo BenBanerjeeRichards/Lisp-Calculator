@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
 	"github.com/benbanerjeerichards/lisp-calculator/test"
@@ -28,12 +29,13 @@ func main() {
 	if debug {
 		file = args[1]
 	}
-	fileContents, err := util.ReadFile(file)
+	filePath, _ := filepath.Abs(file)
+	fileContents, err := util.ReadFile(filePath)
 	if err != nil {
 		fmt.Printf("Failed to open file %s\n", file)
 		return
 	}
-	evalResult, err := calc.ParseAndEval(fileContents, args, debug)
+	evalResult, err := calc.ParseAndEval(filePath, fileContents, args, debug)
 	if err != nil {
 		if astError, ok := err.(types.Error); ok {
 			fmt.Println(calc.AnnotateError(fileContents, astError))

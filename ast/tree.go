@@ -6,6 +6,7 @@ type Ast struct {
 	Expression Expr
 	Statement  Stmt
 	Kind       string
+	FilePath   string
 }
 
 type VarDefStmt struct {

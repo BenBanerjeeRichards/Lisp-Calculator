@@ -176,9 +176,13 @@ func (i Instruction) Detail(frame *Frame, functionNames []string) string {
 		detail = functionNames[i.Arg1]
 	}
 	if i.Opcode == LOAD_VAR {
-		v := frame.Variables[i.Arg1]
-		if v.Kind != "" {
-			detail = v.ToString()
+		if len(frame.Variables) <= i.Arg1 {
+			detail = "<ERROR>"
+		} else {
+			v := frame.Variables[i.Arg1]
+			if v.Kind != "" {
+				detail = v.ToString()
+			}
 		}
 	}
 	str := ""

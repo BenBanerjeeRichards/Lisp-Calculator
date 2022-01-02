@@ -49,25 +49,12 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 	frame.IsRootFrame = true
 	mainIndex := -1
 
-	for _, exprOrStmt := range asts {
-		if exprOrStmt.Kind == ast.StmtType {
-			switch stmt := exprOrStmt.Statement.(type) {
-			case ast.FuncDefStmt:
-				c.Functions = append(c.Functions, &Frame{})
-				c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
-				c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
-			case ast.StructDefStmt:
-				c.Structs = append(c.Structs, stmt.FieldNames)
-				c.StructMap[stmt.Identifier] = len(c.Structs) - 1
-			}
-		}
-	}
+	c.processDeclarations(asts)
 
 	for _, exprOrStmt := range asts {
 		if exprOrStmt.Kind == ast.StmtType {
-			switch stmt := exprOrStmt.Statement.(type) {
-			case ast.VarDefStmt, ast.FuncDefStmt:
-				err := c.compileStatement(stmt, &frame)
+			if _, ok := exprOrStmt.Statement.(ast.FuncDefStmt); ok {
+				err := c.compileAst(exprOrStmt, &frame)
 				if err != nil {
 					return CompileResult{}, err
 				}
@@ -76,6 +63,18 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 	}
 
 	if mainIdx, ok := c.FunctionMap["main"]; ok {
+		// If we are calling main, we need to first evalulate all global variables
+		for _, exprOrStmt := range asts {
+			if exprOrStmt.Kind == ast.StmtType {
+				if _, ok := exprOrStmt.Statement.(ast.VarDefStmt); ok {
+					err := c.compileAst(exprOrStmt, &frame)
+					if err != nil {
+						return CompileResult{}, err
+					}
+				}
+			}
+		}
+
 		mainIndex = mainIdx
 		if len(c.Functions[mainIdx].FunctionArguments) == 1 {
 			frame.Emit(PUSH_ARGS, -1)
@@ -86,21 +85,19 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 	} else {
 		for _, exprOrStmt := range asts {
 			if exprOrStmt.Kind == ast.ExprType {
-				err := c.compileExpression(exprOrStmt.Expression, &frame)
+				err := c.compileAst(exprOrStmt, &frame)
 				if err != nil {
 					return CompileResult{}, err
 				}
 			} else {
 				_, isFunction := exprOrStmt.Statement.(ast.FuncDefStmt)
-				_, isGlobal := exprOrStmt.Statement.(ast.VarDefStmt)
 				_, isStructDef := exprOrStmt.Statement.(ast.StructDefStmt)
-				if !isFunction && !isGlobal && !isStructDef {
-					err := c.compileStatement(exprOrStmt.Statement, &frame)
+				if !isFunction && !isStructDef {
+					err := c.compileAst(exprOrStmt, &frame)
 					if err != nil {
 						return CompileResult{}, err
 					}
 				}
-
 			}
 		}
 	}
@@ -112,6 +109,45 @@ func (c *Compiler) CompileProgram(asts []ast.Ast) (CompileResult, error) {
 
 	return CompileResult{Frame: frame, Functions: c.Functions, GlobalVariables: c.GlobalVariables,
 		MainIndex: mainIndex, FunctionNames: c.FunctionNames, Structs: structs}, nil
+}
+
+// processDeclarations ensures that all declared symbols (functions, globals & structs) are known about
+// Must be done in initial pass location of declarations in code does not matter - e.g. functions can be used
+// before declaration
+func (c *Compiler) processDeclarations(asts []ast.Ast) {
+	for _, exprOrStmt := range asts {
+		if exprOrStmt.Kind == ast.StmtType {
+			switch stmt := exprOrStmt.Statement.(type) {
+			case ast.FuncDefStmt:
+				c.Functions = append(c.Functions, &Frame{})
+				c.FunctionMap[stmt.Identifier] = len(c.Functions) - 1
+				c.FunctionNames = append(c.FunctionNames, stmt.Identifier)
+			case ast.StructDefStmt:
+				c.Structs = append(c.Structs, stmt.FieldNames)
+				c.StructMap[stmt.Identifier] = len(c.Structs) - 1
+			case ast.VarDefStmt:
+				c.GlobalVariables = append(c.GlobalVariables, Value{})
+				c.GlobalVariableMap[stmt.Identifier] = len(c.GlobalVariables) - 1
+			}
+		}
+	}
+}
+
+func (c *Compiler) compileAst(theAst ast.Ast, frame *Frame) error {
+	var err error
+	if theAst.Kind == ast.ExprType {
+		err = c.compileExpression(theAst.Expression, frame)
+	} else {
+		err = c.compileStatement(theAst.Statement, frame)
+	}
+	if err != nil {
+		if ourError, ok := err.(types.Error); ok {
+			ourError.File = theAst.FilePath
+			return ourError
+		}
+		return err
+	}
+	return nil
 }
 
 func (c *Compiler) compileBlock(asts []ast.Ast, frame *Frame) error {
@@ -247,8 +283,13 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 		closureFrame := Frame{}
 		closureFrame.New()
 		// Capture all variables in current scope
-		closureFrame.VariableMap = frame.VariableMap
-		closureFrame.Variables = frame.Variables
+		closureFrame.VariableMap = make(map[string]int)
+		closureFrame.Variables = make([]Value, 0)
+
+		for name, index := range frame.VariableMap {
+			closureFrame.VariableMap[name] = index
+			closureFrame.Variables = append(closureFrame.Variables, frame.Variables[index])
+		}
 		// Capture globals as vars
 		for range c.GlobalVariables {
 			closureFrame.Variables = append(closureFrame.Variables, Value{})
@@ -360,6 +401,7 @@ func (c *Compiler) compileStatement(stmtExpr ast.Stmt, frame *Frame) error {
 			frame.EmitUnary(STORE_VAR, idx, stmt.Range.Start.Line)
 		}
 		frame.Emit(STORE_NULL, stmt.Range.Start.Line)
+
 	case ast.ImportStmt:
 		// NOP
 	case ast.WhileStmt:
