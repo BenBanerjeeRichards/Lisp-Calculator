@@ -1,3 +1,6 @@
+(import "calc/stdlib.lisp" "lib")
+
+
 (defun assertEq (a b message)
     (if (not (= a b))
         (printLn (concatAll (list "FAILED (" message ")" " Expected=" a " Actual=" b))))

@@ -41,3 +41,43 @@ func doParseTreeToDot(node parser.Node, builder *strings.Builder, i *int) {
 		doParseTreeToDot(child, builder, i)
 	}
 }
+
+func ParseTreeToString(node parser.Node) string {
+	var dotBuilder strings.Builder
+	doParseTreeToString(node, &dotBuilder, 0)
+	return dotBuilder.String()
+}
+
+func doParseTreeToString(node parser.Node, builder *strings.Builder, i int) {
+	for _, child := range node.Children {
+		for n := 1; n < i; n++ {
+			builder.WriteString("\t")
+		}
+		builder.WriteString(fmt.Sprintf("%s\n", child.Label()))
+		doParseTreeToString(child, builder, i+1)
+	}
+}
+
+func FileExists(filename string) bool {
+	// https://stackoverflow.com/a/57791506/6404474
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func SubHomeDir(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		lower := len(home) + 1
+		if lower > len(path) {
+			lower = len(path)
+		}
+		return "~/" + path[lower:]
+	}
+	return path
+}

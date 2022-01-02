@@ -1,8 +1,3 @@
-(defun assertEq (a b message)
-    (if (not (= a b))
-        (printLn (concatAll (list "FAILED (" message ")" " Expected=" a " Actual=" b))))
-)
-
 (defun printLn (x) 
     (print x)
     (print "\n")

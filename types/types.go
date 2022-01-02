@@ -8,13 +8,14 @@ import (
 // Errors etc
 
 type Error struct {
+	File   string
 	Range  FileRange
 	Simple string
 	Detail string
 }
 
 func (a Error) Error() string {
-	return fmt.Sprintf("[%d:%d-%d:%d]: %s (%s)", a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
+	return fmt.Sprintf("%s[%d:%d-%d:%d]: %s (%s)", a.File, a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
 }
 
 type FilePos struct {

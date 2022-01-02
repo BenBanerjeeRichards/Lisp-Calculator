@@ -2,10 +2,15 @@ package test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/benbanerjeerichards/lisp-calculator/calc"
-	"github.com/benbanerjeerichards/lisp-calculator/eval"
 	"github.com/benbanerjeerichards/lisp-calculator/parser"
+	"github.com/benbanerjeerichards/lisp-calculator/util"
+	"github.com/benbanerjeerichards/lisp-calculator/vm"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -23,7 +28,7 @@ func printTestFailedBool(code string, expected bool, actual bool) {
 func printTestFailedString(code string, expected string, actual string) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
-func printTestFailedList(code string, expected []eval.Value, actual []eval.Value) {
+func printTestFailedList(code string, expected []vm.Value, actual []vm.Value) {
 	fmt.Printf("Failed: %s\nReason: Expected %v but got %v \n", code, expected, actual)
 }
 
@@ -31,24 +36,31 @@ func printTokensFailed(code string, message string, expected []parser.Token, act
 	fmt.Printf("Failed: %s\nExpected %s\nRecieved %s\n%s\n", code, expected, actual, message)
 }
 
-func evalProgram(code string) (eval.Value, bool) {
-	asts, err := calc.Ast(code)
+func evalProgram(code string) (vm.Value, string, bool) {
+	asts, err := calc.Ast("", code)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return eval.Value{}, false
+		return vm.Value{}, "", false
 	}
-	evalulator := eval.Evalulator{}
-	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
+	compiler := vm.Compiler{}
+	compiler.New()
+	frame, err := compiler.CompileProgram(asts)
 	if err != nil {
 		printTestFailedErr(code, err)
-		return eval.Value{}, false
+		return vm.Value{}, "", false
 	}
-	return evalResult, true
+	var stdOut strings.Builder
+	evalResult, err := vm.Eval(frame, []string{"arg1", "arg2", "arg3"}, false, &stdOut)
+	if err != nil {
+		printTestFailedErr(code, err)
+		return vm.Value{}, "", false
+	}
+	return evalResult, stdOut.String(), true
 }
 
 func (r *Runner) ExpectNumber(code string, expected float64) bool {
-	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.NumType {
+	if evalResult, _, ok := evalProgram(code); ok {
+		if evalResult.Kind != vm.NumType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %f but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -66,8 +78,8 @@ func (r *Runner) ExpectNumber(code string, expected float64) bool {
 }
 
 func (r *Runner) ExpectBool(code string, expected bool) bool {
-	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.BoolType {
+	if evalResult, _, ok := evalProgram(code); ok {
+		if evalResult.Kind != vm.BoolType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -84,9 +96,9 @@ func (r *Runner) ExpectBool(code string, expected bool) bool {
 	return false
 }
 
-func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
-	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.ListType {
+func (r *Runner) ExpectList(code string, expected []vm.Value) bool {
+	if evalResult, _, ok := evalProgram(code); ok {
+		if evalResult.Kind != vm.ListType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -111,8 +123,8 @@ func (r *Runner) ExpectList(code string, expected []eval.Value) bool {
 }
 
 func (r *Runner) ExpectString(code string, expected string) bool {
-	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.StringType {
+	if evalResult, _, ok := evalProgram(code); ok {
+		if evalResult.Kind != vm.StringType {
 			r.numFailed += 1
 			fmt.Printf("Failed: %s\nReason: Expected %v but got type %s\n", code, expected, evalResult.Kind)
 			return false
@@ -129,10 +141,10 @@ func (r *Runner) ExpectString(code string, expected string) bool {
 	return false
 }
 func (r *Runner) ExpectNull(code string) bool {
-	if evalResult, ok := evalProgram(code); ok {
-		if evalResult.Kind != eval.NullType {
+	if evalResult, _, ok := evalProgram(code); ok {
+		if evalResult.Kind != vm.NullType {
 			r.numFailed += 1
-			fmt.Printf("Failed: %s\nReason: Expected null but got type %s\n", code, evalResult.Kind)
+			fmt.Printf("Failed: %s\nReason: Expected null but got type %s (%s)\n", code, evalResult.Kind, evalResult.ToString())
 			return false
 		}
 		r.numPassed += 1
@@ -142,21 +154,26 @@ func (r *Runner) ExpectNull(code string) bool {
 	return false
 }
 
-func (r *Runner) ExepctError(code string) bool {
-	asts, err := calc.Ast(code)
+func (r *Runner) ExpectError(code string) bool {
+	ast, err := calc.Ast("", code)
 	if err != nil {
 		r.numPassed += 1
 		return true
 	}
-	evalulator := eval.Evalulator{}
-	evalResult, err := evalulator.EvalProgram(asts, []string{"arg1", "arg2", "arg3"})
+	c := vm.Compiler{}
+	c.New()
+	compileRes, err := c.CompileProgram(ast)
 	if err != nil {
 		r.numPassed += 1
 		return true
 	}
-
+	res, err := vm.Eval(compileRes, []string{}, false, os.Stdout)
+	if err != nil {
+		r.numPassed += 1
+		return true
+	}
 	r.numFailed += 1
-	fmt.Printf("Failed: %s\nReason: Expected an error but code evalulated successfully to %v\n", code, evalResult)
+	fmt.Printf("Failed: %s\nReason: Expected an error but code compiled and eval'd to %v \n", code, res)
 	return false
 }
 
@@ -199,13 +216,15 @@ func mkToken(kind string, data string) parser.Token {
 }
 
 type Runner struct {
-	numPassed int
-	numFailed int
+	numPassed       int
+	numFailed       int
+	numOutputPassed int
 }
 
 func (r Runner) printSummary() {
+	outputTests := fmt.Sprintf("(including %d output tests)", r.numOutputPassed)
 	if r.numFailed == 0 {
-		fmt.Printf("All %d tests passed\n", r.numPassed)
+		fmt.Printf("All %d tests passed %s\n", r.numPassed, outputTests)
 	} else {
 		s := "s"
 		if r.numFailed == 1 {
@@ -219,6 +238,10 @@ func Run() {
 	r := Runner{numPassed: 0, numFailed: 0}
 	r.ExpectTokens("(x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "x"),
 		mkToken(parser.TokRBracket, "")})
+	r.ExpectTokens("(:x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "x"),
+		mkToken(parser.TokRBracket, "")})
+	r.ExpectTokens("a:b", []parser.Token{mkToken(parser.TokIdent, "a"), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "b")})
+
 	r.ExpectTokens("(5)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokNumber, "5"),
 		mkToken(parser.TokRBracket, "")})
 	r.ExpectTokens("(hello", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokIdent, "hello")})
@@ -271,7 +294,7 @@ func Run() {
 	r.ExpectBool("(or true true)", true)
 	r.ExpectBool("(or false false)", false)
 
-	// Eqality
+	// Equality
 	r.ExpectBool("(= 10 10)", true)
 	r.ExpectBool("(= 10 7)", false)
 	r.ExpectBool("(= true false)", false)
@@ -297,13 +320,13 @@ func Run() {
 	r.ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list null false)))`, false)
 	r.ExpectBool(`(= (list 1 2 (list true false)) (list 1 2 (list false false)))`, false)
 
-	r.ExpectList("(list 1 2 3)", []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}})
-	r.ExpectList("(list)", []eval.Value{})
-	r.ExpectList(`(list 1 false null "s")`, []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.BoolType, Bool: false}, {Kind: eval.NullType}, {Kind: eval.StringType, String: "s"}})
-	r.ExpectList("(list 1 (list 2 3) null)", []eval.Value{{Kind: eval.NumType, Num: 1},
-		{Kind: eval.ListType, List: []eval.Value{{Kind: eval.NumType, Num: 2}, {Kind: eval.NumType, Num: 3}}}, {Kind: eval.NullType}})
+	r.ExpectList("(list 1 2 3)", []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.NumType, Num: 2}, {Kind: vm.NumType, Num: 3}})
+	r.ExpectList("(list)", []vm.Value{})
+	r.ExpectList(`(list 1 false null "s")`, []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.BoolType, Bool: false}, {Kind: vm.NullType}, {Kind: vm.StringType, String: "s"}})
+	r.ExpectList("(list 1 (list 2 3) null)", []vm.Value{{Kind: vm.NumType, Num: 1},
+		{Kind: vm.ListType, List: []vm.Value{{Kind: vm.NumType, Num: 2}, {Kind: vm.NumType, Num: 3}}}, {Kind: vm.NullType}})
 
 	// List length
 	r.ExpectNumber("(length (list))", 0)
@@ -379,6 +402,19 @@ func Run() {
 			(* 2 a)))     
 		(first))
 	(quadraticFirst 2 5 3)`, -1)
+	r.ExpectNumber(`
+	(defun f (a b) (/ a b))
+	(f 10 2)`, 5)
+	r.ExpectNumber(`
+	  (def x 10)
+	  (defun f () x)
+	  (f)
+	`, 10)
+	r.ExpectNumber(`
+	  (def x 10)
+	  (defun f (x) x)
+	  (f 20)
+	`, 20)
 
 	r.ExpectNumber("(if true 4 2)", 4)
 	r.ExpectNumber("(if true 4)", 4)
@@ -391,6 +427,8 @@ func Run() {
 		 (def y 20)
 		 (- x y)
 	))`, -10)
+
+	r.ExpectNumber(`(if true 1 0) (20)`, 20)
 
 	r.ExpectNumber(`
 	(def sum 0)
@@ -418,6 +456,23 @@ func Run() {
 		))
 	(funcall f 4)
 	`, 48)
+	r.ExpectNumber(`
+	(defun f () 
+		(def x 10)
+		(def l (lambda (y) (+ x y)))
+		(funcall l 30)
+	)
+	(f)
+	`, 40)
+	r.ExpectNumber(`
+	(defun f () 
+		(def x 10)
+		(def l (lambda (y) (+ x y)))
+		(def x 100)
+		(funcall l 30)
+	)
+	(f)
+	`, 40)
 	r.ExpectNumber(`
 	(def x 200)
 	(def f (lambda (l) (+ x l)))
@@ -457,6 +512,62 @@ func Run() {
 	 (f)
 	 (x)
 	`, 10)
+	r.ExpectNumber(`
+	  (def f (lambda (a b) (- a b)))
+	  (funcall f 20 10)
+	`, 10)
+
+	r.ExpectNumber(`
+	   (defstruct person age)
+	   (defun add10 (p) (def p:age (+ p:age 10)))
+	   (def me (struct person (age 23)))
+	   (add10 me)
+	   (me:age)
+	`, 33)
+
+	// Functions can used before declaration
+	r.ExpectNumber(`
+	(f 20 )
+    (defun f (x) (+ x 10))
+    `, 30)
+
+	// Strange but due to function hoisting
+	r.ExpectNumber(`
+	(f 20 )
+    (defun f (x) (+ x 10))
+    `, 30)
+
+	r.ExpectNumber(`
+	(def y (f 20))
+    (defun f (x) (+ x 10))
+    (y)`, 30)
+
+	r.ExpectNumber(`
+	(defun g (x) (f x))
+    (defun f (x) (+ x 10))
+     (g 20)`, 30)
+
+	// Embedding function calls in arguments
+	r.ExpectNumber(`
+	(defun g (x) (200))
+	(defun sum (a b) (+ a b))
+    (sum 1 (g 3))`, 201)
+
+	r.ExpectNumber(`
+	  (defun id (x) 
+	  	(20)
+		(x))
+	  (+ 5 (id 15))
+	`, 20)
+
+	r.ExpectNumber(`
+	(def g (lambda (x)
+		(20)
+		(x)
+	))
+
+	(+ 5 (funcall g 15))
+  `, 20)
 
 	// Main function
 	r.ExpectNumber(`
@@ -480,14 +591,7 @@ func Run() {
 	(defun main () (aGlobalVariable))
 	`, 100)
 
-	// Imports eval to null
-	r.ExepctError("(import) (10)")
-	r.ExpectNull(`(import "hello")`)
-	r.ExpectNull(`(import "hello" "world")`)
-	r.ExpectNull(`(import "hello" "world" "another")`)
-
-	// Panic
-	r.ExepctError(`(panic "error!")`)
+	r.ExpectError(`(defun main (a b) a)`)
 
 	// Concat
 	r.ExpectString(`(concat "Hello " "World")`, "Hello World")
@@ -500,7 +604,146 @@ func Run() {
 	 (x)
 	`, 20)
 
+	r.ExpectNumber(`
+	; Test comment string
+	; This is a comment
+	 (20)
+	`, 20)
+	r.ExpectNumber(`
+	;; Test comment; string;
+	 (20)
+	`, 20)
+
+	// records
+	r.ExpectNull(`
+	(defstruct person name age)
+	(def ben (struct person))
+	(ben:age)
+   `)
+
+	r.ExpectNumber(`
+   (defstruct person name age)
+   (def ben (struct person (age 23)))
+   (ben:age)
+  `, 23)
+
+	r.ExpectNumber(`
+	 (defstruct person name age)
+	 (def ben (struct person))
+	 (def ben:name "Ben")
+	 (def ben:age 23)
+	 (:age ben)
+	`, 23)
+	r.ExpectString(`
+	 (defstruct person name age)
+	 (def ben (struct person (name "Ben") (age 23)))
+	 (:name ben)
+	`, "Ben")
+	r.ExpectNull(`
+	(defstruct person name age other)
+	(def ben (struct person (name "Ben") (age 23)))
+	(def ben:name "Ben")
+	(def ben:age 23)
+	(:other ben)
+   `)
+	r.ExpectString(`
+  (defstruct person name age other)
+  (defun create () (struct person (name "Ben") (age 40)))
+  (:name (create))
+ `, "Ben")
+
+	r.ExpectBool(`
+	(defstruct person name age)
+	 (def p (struct person (age 200)))
+	 (= 200 (p:age))
+	`, true)
+
+	r.ExpectError(`
+	(defstruct person name age)
+	(def p (struct person (notafield 200)))
+	`)
+
+	// Return
+	r.ExpectNumber(`
+	(defun f (x)
+    	(if (< x 10) (return 10))
+    	(+ x 200)
+	)
+	(+ (f 5) (f 50))
+	`, 260)
+	r.ExpectNull(`
+	(defun f (x)
+    	(return)
+	)
+	(f 20)
+	`)
+	r.ExpectNull(`
+	(defun f (x)
+    	(return null)
+	)
+	(f 20)
+	`)
+
+	r.RunOutputTest()
+
 	fmt.Print("\033[1m")
 	r.printSummary()
 	fmt.Print("\033[0m")
+}
+
+func (r *Runner) RunOutputTest() {
+	TEST_PATH := "test/output/"
+	testFolders, err := ioutil.ReadDir(TEST_PATH)
+	if err != nil {
+		fmt.Println("Faild to load output tests: ", err)
+		return
+	}
+
+	for _, fileInfo := range testFolders {
+		if !fileInfo.IsDir() {
+			fmt.Printf("WARNING - Found file %s inside test/output/. Expected only directories\n", fileInfo.Name())
+			continue
+		}
+		testDirectory := filepath.Join(TEST_PATH, fileInfo.Name())
+		testFiles, err := ioutil.ReadDir(testDirectory)
+		if err != nil {
+			fmt.Println("Faild to load test: ", testDirectory, err)
+			return
+		}
+
+		outputFile := ""
+		mainFile := ""
+		for _, testFile := range testFiles {
+			if testFile.Name() == "main.lisp" {
+				mainFile = filepath.Join(testDirectory, testFile.Name())
+			}
+			if testFile.Name() == "out.txt" {
+				outputFile = filepath.Join(testDirectory, testFile.Name())
+			}
+		}
+		if outputFile == "" {
+			fmt.Println("Failed to find out.txt inside test directory", testDirectory)
+			return
+		}
+		if mainFile == "" {
+			fmt.Println("Failed to find main.lisp inside test directory", testDirectory)
+			return
+		}
+		expectedOut, _ := util.ReadFile(outputFile)
+		mainContents, _ := util.ReadFile(mainFile)
+		_, stdout, ok := evalProgram(mainContents)
+		if !ok {
+			r.numFailed += 1
+			fmt.Println("Failed path:", mainFile)
+			continue
+		}
+		if stdout != expectedOut {
+			r.numFailed += 1
+			fmt.Println("Output test failed: ", mainFile)
+			fmt.Printf("Expected: %s\nActual: %s\n", expectedOut, stdout)
+		} else {
+			r.numPassed += 1
+			r.numOutputPassed += 1
+		}
+	}
 }

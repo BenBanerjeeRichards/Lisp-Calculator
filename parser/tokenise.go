@@ -14,12 +14,13 @@ const (
 	TokString   = "TokString"
 	TokLBracket = "TokLBracket"
 	TokRBracket = "TokRBracket"
+	TokColon    = "TokColon"
 )
 
 // Taken from standard library (strings)
 var asciiSpace = [256]uint8{'\t': 1, '\n': 1, '\v': 1, '\f': 1, '\r': 1, ' ': 1}
 var eof uint8 = 0xFF
-var identifierRegex, _ = regexp.Compile(`^[^0-9\s()][^()\s]*$`)
+var identifierRegex, _ = regexp.Compile(`^[^0-9\s()\:][^()\s\:]*$`)
 
 type Token struct {
 	Kind  string
@@ -63,14 +64,17 @@ func (t *Tokeniser) nextChar() uint8 {
 	return t.Current()
 }
 
-func (t *Tokeniser) consumeSpaces() {
+func (t *Tokeniser) consumeSpaces() bool {
+	consumed := false
 	for !t.isEOF() && isSpace(t.Current()) {
+		consumed = true
 		if t.Current() == '\n' {
 			t.line += 1
 			t.col = 1
 		}
 		t.nextChar()
 	}
+	return consumed
 }
 
 func (t Tokeniser) currentPos() types.FilePos {
@@ -110,20 +114,29 @@ func (t *Tokeniser) consumeWhile(condition func(uint8) bool) (string, types.File
 	return acc, types.FileRange{Start: start, End: t.currentPos()}
 }
 
-func (t *Tokeniser) consumeComment() {
+func (t *Tokeniser) consumeComment() bool {
 	if t.Current() != ';' {
-		return
+		return false
 	}
 	for !t.isEOF() && t.Current() != '\n' {
 		t.nextChar()
 	}
+	return true
+}
+
+func (t *Tokeniser) consumeSpacesAndCommments() {
+	somethingConsumed := true
+	for somethingConsumed {
+		somethingConsumed = false
+		somethingConsumed = somethingConsumed || t.consumeComment()
+		somethingConsumed = somethingConsumed || t.consumeSpaces()
+		somethingConsumed = somethingConsumed || t.consumeComment()
+		somethingConsumed = somethingConsumed || t.consumeSpaces()
+	}
 }
 
 func (t *Tokeniser) nextToken() (Token, bool) {
-	t.consumeComment()
-	t.consumeSpaces()
-	t.consumeComment()
-	t.consumeSpaces()
+	t.consumeSpacesAndCommments()
 	nextChar := t.Current()
 	start := t.currentPos()
 	if nextChar == '(' {
@@ -133,6 +146,11 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 	if nextChar == ')' {
 		t.nextChar()
 		return Token{Kind: TokRBracket, Range: types.FileRange{Start: start, End: t.currentPos()}}, true
+	}
+	if nextChar == ':' {
+		t.nextChar()
+		return Token{Kind: TokColon, Range: types.FileRange{Start: start, End: t.currentPos()}}, true
+
 	}
 	// TODO should improve this, probably just use regexp
 	if isDigit(nextChar) || (nextChar == '-' && isDigit(t.Peek(1))) {
@@ -194,7 +212,7 @@ func (t *Tokeniser) nextToken() (Token, bool) {
 	// Scan all non-whitespace characters and then test using regex
 	var identBuilder strings.Builder
 	i := 0
-	for !isSpace(nextChar) && nextChar != eof && nextChar != '(' && nextChar != ')' {
+	for !isSpace(nextChar) && nextChar != eof && nextChar != '(' && nextChar != ')' && nextChar != ':' {
 		identBuilder.WriteByte(nextChar)
 		i += 1
 		nextChar = t.Peek(i)

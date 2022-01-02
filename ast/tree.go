@@ -6,6 +6,7 @@ type Ast struct {
 	Expression Expr
 	Statement  Stmt
 	Kind       string
+	FilePath   string
 }
 
 type VarDefStmt struct {
@@ -91,6 +92,40 @@ type WhileStmt struct {
 	Range     types.FileRange
 }
 
+type StructDefStmt struct {
+	Identifier string
+	FieldNames []string
+	Range      types.FileRange
+}
+
+type StructAccessorExpr struct {
+	Struct          Expr
+	FieldIdentifier string
+	Range           types.FileRange
+}
+
+type StructFieldDeclarationStmt struct {
+	StructIdentifier string
+	FieldIdentifier  string
+	Value            Expr
+	Range            types.FileRange
+}
+
+type StructExpr struct {
+	StructIdentifier string
+	Values           map[string]Expr
+	Range            types.FileRange
+}
+
+type ReturnStmt struct {
+	Range types.FileRange
+}
+
+type ReturnValueStmt struct {
+	Value Expr
+	Range types.FileRange
+}
+
 func (v VarDefStmt) GetRange() types.FileRange {
 	return v.Range
 }
@@ -151,6 +186,28 @@ func (v ClosureApplicationExpr) GetRange() types.FileRange {
 	return v.Range
 }
 
+func (v StructDefStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v StructAccessorExpr) GetRange() types.FileRange {
+	return v.Range
+}
+func (v StructFieldDeclarationStmt) GetRange() types.FileRange {
+	return v.Range
+}
+func (v StructExpr) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v ReturnStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
+func (v ReturnValueStmt) GetRange() types.FileRange {
+	return v.Range
+}
+
 // These are just to prevent assigning a statement to an expression
 // Same as what go compiler does
 func (FunctionApplicationExpr) exprType() {}
@@ -164,11 +221,17 @@ func (ListExpr) exprType()                {}
 func (NullExpr) exprType()                {}
 func (ClosureDefExpr) exprType()          {}
 func (ClosureApplicationExpr) exprType()  {}
+func (StructAccessorExpr) exprType()      {}
+func (StructExpr) exprType()              {}
 
-func (VarDefStmt) stmtType()  {}
-func (FuncDefStmt) stmtType() {}
-func (WhileStmt) stmtType()   {}
-func (ImportStmt) stmtType()  {}
+func (VarDefStmt) stmtType()                 {}
+func (FuncDefStmt) stmtType()                {}
+func (WhileStmt) stmtType()                  {}
+func (ImportStmt) stmtType()                 {}
+func (StructDefStmt) stmtType()              {}
+func (StructFieldDeclarationStmt) stmtType() {}
+func (ReturnStmt) stmtType()                 {}
+func (ReturnValueStmt) stmtType()            {}
 
 func (ast *Ast) newStatement(stmt Stmt) {
 	ast.Kind = StmtType

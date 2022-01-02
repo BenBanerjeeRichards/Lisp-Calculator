@@ -8,13 +8,15 @@ import (
 )
 
 const (
-	NumberNode     = "NumberNode"
-	StringNode     = "StringNode"
-	BoolNode       = "BoolNode"
-	NullNode       = "NullNode"
-	LiteralNode    = "LiteralNode"
-	ExpressionNode = "ExpressionNode"
-	ProgramNode    = "ProgramNode"
+	NumberNode            = "NumberNode"
+	StringNode            = "StringNode"
+	BoolNode              = "BoolNode"
+	NullNode              = "NullNode"
+	LiteralNode           = "LiteralNode"
+	ExpressionNode        = "ExpressionNode"
+	ProgramNode           = "ProgramNode"
+	AccessorNode          = "AccessorNode"
+	AccessorOperationNode = "AccessorOperationNode"
 )
 
 type Parser struct {
@@ -45,6 +47,10 @@ func (node Node) Label() string {
 		return node.Data
 	case LiteralNode:
 		return fmt.Sprintf("'%s'", node.Data)
+	case AccessorNode:
+		return "Accessor"
+	case AccessorOperationNode:
+		return "AccessorExpression"
 	default:
 		return node.Kind
 	}
@@ -77,6 +83,13 @@ func (p Parser) isEndOfInput() bool {
 func (p *Parser) nextToken() (Token, error) {
 	p.currIndex += 1
 	return p.currentToken()
+}
+
+func (p *Parser) backtrack() {
+	p.currIndex -= 1
+	if p.currIndex < 0 {
+		p.currIndex = 0
+	}
 }
 
 func (p *Parser) parserNumber() (Node, error) {
@@ -132,12 +145,49 @@ func (p *Parser) ParseExpression() (Node, error) {
 
 	litNode, err := p.parseLiteral()
 	if err == nil {
+		// Could be a literal accessor (<literal>:<literal>)
+		currToken, err := p.currentToken()
+		if err == nil && currToken.Kind == TokColon {
+			p.nextToken()
+			accessorRhs, err := p.parseLiteral()
+			if err != nil {
+				return Node{}, types.Error{Simple: "Invalid struct accessor format - RHS of colon must be an identifier", Range: currToken.Range}
+			}
+			accessorRange := litNode.Range
+			accessorRange.End = accessorRhs.Range.End
+			accessorNode := Node{Kind: AccessorNode, Range: accessorRange, Children: []Node{litNode, accessorRhs}}
+			return Node{Kind: ExpressionNode, Children: []Node{accessorNode}}, nil
+		}
 		return Node{Kind: ExpressionNode, Children: []Node{litNode}, Range: litNode.Range}, nil
 	}
+
 	token, err := p.currentToken()
 	if err != nil || token.Kind != TokLBracket {
-		return Node{}, errors.New("expected ( whilst parsing expression")
+		return Node{}, types.Error{Simple: fmt.Sprintf("Expected `(` whilst parsing expression, got %s", token.Kind), Range: token.Range}
 	}
+
+	peekToken, err := p.nextToken()
+	if peekToken.Kind == TokColon && err == nil {
+		// Must be struct accessor (:name person)
+		p.nextToken()
+		literal, err := p.parseLiteral()
+		if err != nil {
+			return Node{}, types.Error{Range: peekToken.Range, Simple: "Invalid accessor syntax - expected literal after :"}
+		}
+		structParse, err := p.ParseExpression()
+		if err != nil {
+			return Node{}, err
+		}
+		endBracket, err := p.currentToken()
+		if err != nil || endBracket.Kind != TokRBracket {
+			return Node{}, types.Error{Simple: "Expected ) after accessor", Range: literal.Range}
+		}
+		p.nextToken()
+		return Node{Kind: AccessorOperationNode, Children: []Node{literal, structParse}}, nil
+	} else {
+		p.backtrack()
+	}
+
 	// Start and End point to '(' and ')' respectivly
 	rangeStart := token.Range
 	rangeEnd := token.Range
@@ -156,7 +206,7 @@ func (p *Parser) ParseExpression() (Node, error) {
 		return Node{}, tokError
 	}
 	if err != nil {
-		return Node{}, nil
+		return Node{}, err
 	}
 	p.nextToken()
 	return Node{Kind: ExpressionNode, Children: childExpressions, Range: types.FileRange{Start: rangeStart.End, End: rangeEnd.End}}, nil

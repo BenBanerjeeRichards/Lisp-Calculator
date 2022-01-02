@@ -56,5 +56,5 @@
 )
 
 (defun main ()
-    (input)
+    (euler7)
 )
