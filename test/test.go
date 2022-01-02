@@ -37,14 +37,18 @@ func printTokensFailed(code string, message string, expected []parser.Token, act
 }
 
 func evalProgram(code string) (vm.Value, string, bool) {
-	asts, err := calc.Ast("", code)
+	return evalProgramAtFile("", code)
+}
+
+func evalProgramAtFile(path string, code string) (vm.Value, string, bool) {
+	asts, err := calc.Ast(path, code)
 	if err != nil {
 		printTestFailedErr(code, err)
 		return vm.Value{}, "", false
 	}
 	compiler := vm.Compiler{}
 	compiler.New()
-	frame, err := compiler.CompileProgram("", asts)
+	frame, err := compiler.CompileProgram(path, asts)
 	if err != nil {
 		printTestFailedErr(code, err)
 		return vm.Value{}, "", false
@@ -731,7 +735,7 @@ func (r *Runner) RunOutputTest() {
 		}
 		expectedOut, _ := util.ReadFile(outputFile)
 		mainContents, _ := util.ReadFile(mainFile)
-		_, stdout, ok := evalProgram(mainContents)
+		_, stdout, ok := evalProgramAtFile(mainFile, mainContents)
 		if !ok {
 			r.numFailed += 1
 			fmt.Println("Failed path:", mainFile)
