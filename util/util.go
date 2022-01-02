@@ -53,7 +53,11 @@ func doParseTreeToString(node parser.Node, builder *strings.Builder, i int) {
 		for n := 1; n < i; n++ {
 			builder.WriteString("\t")
 		}
-		builder.WriteString(fmt.Sprintf("%s\n", child.Label()))
+		builder.WriteString(child.Kind)
+		if len(child.Data) > 0 {
+			builder.WriteString(fmt.Sprintf("(%s)", child.Data))
+		}
+		builder.WriteString("\n")
 		doParseTreeToString(child, builder, i+1)
 	}
 }

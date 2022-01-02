@@ -13,6 +13,7 @@ const (
 	BoolNode              = "BoolNode"
 	NullNode              = "NullNode"
 	LiteralNode           = "LiteralNode"
+	QualifiedLiteralNode  = "QualifiedLiteral"
 	ExpressionNode        = "ExpressionNode"
 	ProgramNode           = "ProgramNode"
 	AccessorNode          = "AccessorNode"
@@ -46,6 +47,8 @@ func (node Node) Label() string {
 	case BoolNode:
 		return node.Data
 	case LiteralNode:
+		return fmt.Sprintf("'%s'", node.Data)
+	case QualifiedLiteralNode:
 		return fmt.Sprintf("'%s'", node.Data)
 	case AccessorNode:
 		return "Accessor"
@@ -133,6 +136,25 @@ func (p *Parser) parseLiteral() (Node, error) {
 	return Node{}, errors.New("not a string")
 }
 
+func (p *Parser) parseQualifiedLiteral() (Node, error) {
+	startIdx := p.currIndex
+	qualifierNode, err := p.parseLiteral()
+	if err == nil {
+		tok, err := p.currentToken()
+		if err == nil && tok.Kind == TokDot {
+			p.nextToken()
+			nameNode, err := p.parseLiteral()
+			if err == nil {
+				nodeRange := qualifierNode.Range
+				nodeRange.End = nameNode.Range.End
+				return Node{Range: nodeRange, Kind: QualifiedLiteralNode, Children: []Node{qualifierNode, nameNode}}, nil
+			}
+		}
+	}
+	p.currIndex = startIdx
+	return Node{}, errors.New("not a qualified literal")
+}
+
 func (p *Parser) ParseExpression() (Node, error) {
 	numNode, err := p.parserNumber()
 	if err == nil {
@@ -143,6 +165,11 @@ func (p *Parser) ParseExpression() (Node, error) {
 		return Node{Kind: ExpressionNode, Children: []Node{strNode}, Range: strNode.Range}, nil
 	}
 
+	// TODO what about struct access on qualified literal? (e.g. qual.st:field)
+	qual, err := p.parseQualifiedLiteral()
+	if err == nil {
+		return qual, nil
+	}
 	litNode, err := p.parseLiteral()
 	if err == nil {
 		// Could be a literal accessor (<literal>:<literal>)

@@ -245,6 +245,9 @@ func Run() {
 	r.ExpectTokens("(:x)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "x"),
 		mkToken(parser.TokRBracket, "")})
 	r.ExpectTokens("a:b", []parser.Token{mkToken(parser.TokIdent, "a"), mkToken(parser.TokColon, ""), mkToken(parser.TokIdent, "b")})
+	r.ExpectTokens("a.b", []parser.Token{mkToken(parser.TokIdent, "a"), mkToken(parser.TokDot, ""), mkToken(parser.TokIdent, "b")})
+	r.ExpectTokens(".ab", []parser.Token{mkToken(parser.TokDot, ""), mkToken(parser.TokIdent, "ab")})
+	r.ExpectTokens("ab.", []parser.Token{mkToken(parser.TokIdent, "ab"), mkToken(parser.TokDot, "")})
 
 	r.ExpectTokens("(5)", []parser.Token{mkToken(parser.TokLBracket, ""), mkToken(parser.TokNumber, "5"),
 		mkToken(parser.TokRBracket, "")})

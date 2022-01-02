@@ -1,0 +1,3 @@
+(defun aFunction () 
+    (print "A")
+)

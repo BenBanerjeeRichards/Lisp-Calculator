@@ -122,17 +122,20 @@ out:
 			e.stack = e.stack[0 : len(e.stack)-2]
 			val := Value{}
 			if lhs.Kind != NumType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for first argument to add, got %s", lhs.Kind)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Type error -  expected type Num for first argument to add, got %s", lhs.Kind)}
 			}
 			if rhs.Kind != NumType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Num for second argument to add, got %s", lhs.Kind)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Type error -  expected type Num for second argument to add, got %s", lhs.Kind)}
 			}
 			val.NewNum(lhs.Num + rhs.Num)
 			e.stack = append(e.stack, val)
 		case COND_JUMP:
 			val := e.stack[len(e.stack)-1]
 			if val.Kind != BoolType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
 			}
 			e.stack = e.stack[0 : len(e.stack)-1]
 			if val.Bool {
@@ -141,7 +144,8 @@ out:
 		case COND_JUMP_FALSE:
 			val := e.stack[len(e.stack)-1]
 			if val.Kind != BoolType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Type error -  expected type Bool for condition, got %s", val.Kind)}
 			}
 			e.stack = e.stack[0 : len(e.stack)-1]
 			if !val.Bool {
@@ -178,7 +182,8 @@ out:
 			name := frame.Names[instr.Arg1]
 			stru := e.stack[len(e.stack)-1]
 			if stru.Kind != StructType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Expected type struct, got %s", stru.Kind)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Expected type struct, got %s", stru.Kind)}
 			}
 			// TODO (optimization) probably want to use a map to store this mapping on Value.Struct
 			idx := -1
@@ -189,7 +194,8 @@ out:
 				}
 			}
 			if idx == -1 {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Field %s not found on struct", name)}
+				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+					Simple: fmt.Sprintf("Field %s not found on struct", name)}
 			}
 			val := Value{}
 			val.NewNum(float64(idx))
@@ -259,7 +265,7 @@ out:
 		case PUSH_CLOSURE_VAR:
 			closure := e.stack[len(e.stack)-1]
 			if closure.Kind != ClosureType {
-				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
+				return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind), FilePath: frame.FilePath}
 			}
 			closure.Closure.Body.Variables[instr.Arg2] = frame.Variables[instr.Arg1]
 			e.stack[len(e.stack)-1] = closure
@@ -267,7 +273,8 @@ out:
 			closure := e.stack[len(e.stack)-1]
 			if closure.Kind != ClosureType {
 				if closure.Kind != ClosureType {
-					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
+					return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+						Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 				}
 			}
 			closure.Closure.Body.Variables[instr.Arg2] = (*e.globalVariables)[instr.Arg2]
@@ -279,7 +286,8 @@ out:
 			stackIndex := len(e.stack) - (len(closure.Closure.Args) + 1)
 			if closure.Kind != ClosureType {
 				if closure.Kind != ClosureType {
-					return Value{}, RuntimeError{Line: frame.LineMap[pc], Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
+					return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
+						Simple: fmt.Sprintf("Type error -  expected Closure, got %s", closure.Kind)}
 				}
 			}
 			val, err := e.evalInstructions(*closure.Closure.Body)
