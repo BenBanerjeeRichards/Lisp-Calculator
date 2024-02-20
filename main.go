@@ -17,6 +17,7 @@ var opts struct {
 	PrintTokens    bool `short:"T" long:"tokens" description:"Print out the tokens"`
 	PrintParseTree bool `short:"P" long:"parse-tree" description:"Print out the parse"`
 	PrintAst       bool `short:"A" long:"ast" description:"Print out the AST"`
+	PrintFunctions bool `short:"F" long:"functions" description:"Print out all defined functions"`
 }
 
 func main() {
@@ -38,7 +39,8 @@ func main() {
 		fmt.Printf("Failed to open file %s\n", file)
 		return
 	}
-	opts := calc.RunOptions{Debug: opts.Debug, PrintParseTree: opts.PrintParseTree, PrintTokens: opts.PrintTokens, PrintAst: opts.PrintAst}
+	opts := calc.RunOptions{Debug: opts.Debug, PrintParseTree: opts.PrintParseTree,
+		PrintTokens: opts.PrintTokens, PrintAst: opts.PrintAst, PrintFunctions: opts.PrintFunctions}
 	evalResult, err := calc.ParseAndEval(filePath, fileContents, args, opts)
 	if err != nil {
 		if astError, ok := err.(types.Error); ok {

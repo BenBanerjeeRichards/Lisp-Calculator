@@ -7,10 +7,6 @@ const (
 	// Remove element from top of stack
 	POP = iota
 
-	// ADD
-	// Adds top two elements numbers of the stack
-	ADD
-
 	// JUMP <relativeOffset>
 	// Unconditional jump to PC + relativeOffset
 	JUMP
@@ -98,8 +94,6 @@ func opcodeToString(op int) string {
 	switch op {
 	case POP:
 		return "POP"
-	case ADD:
-		return "ADD"
 	case JUMP:
 		return "JUMP"
 	case COND_JUMP:

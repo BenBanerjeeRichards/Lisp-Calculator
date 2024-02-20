@@ -15,7 +15,7 @@ type Error struct {
 }
 
 func (a Error) Error() string {
-	return fmt.Sprintf("%s[%d:%d-%d:%d]: %s (%s)", a.File, a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
+	return fmt.Sprintf("%s:%d:%d-%d:%d: %s (%s)", a.File, a.Range.Start.Line, a.Range.Start.Col, a.Range.End.Line, a.Range.End.Col, a.Simple, a.Detail)
 }
 
 type FilePos struct {

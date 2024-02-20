@@ -116,21 +116,6 @@ out:
 			e.stack = append(e.stack, v)
 		case POP:
 			e.stack = e.stack[0 : len(e.stack)-1]
-		case ADD:
-			lhs := e.stack[len(e.stack)-1]
-			rhs := e.stack[len(e.stack)-2]
-			e.stack = e.stack[0 : len(e.stack)-2]
-			val := Value{}
-			if lhs.Kind != NumType {
-				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
-					Simple: fmt.Sprintf("Type error -  expected type Num for first argument to add, got %s", lhs.Kind)}
-			}
-			if rhs.Kind != NumType {
-				return Value{}, RuntimeError{FilePath: frame.FilePath, Line: frame.LineMap[pc],
-					Simple: fmt.Sprintf("Type error -  expected type Num for second argument to add, got %s", lhs.Kind)}
-			}
-			val.NewNum(lhs.Num + rhs.Num)
-			e.stack = append(e.stack, val)
 		case COND_JUMP:
 			val := e.stack[len(e.stack)-1]
 			if val.Kind != BoolType {

@@ -34,11 +34,13 @@ type VarUseExpr struct {
 }
 
 type FunctionApplicationExpr struct {
+	Qualifier  string
 	Identifier string
 	// FilePath is the path to the file containing the function
-	FilePath string
-	Args     []Expr
-	Range    types.FileRange
+	FilePath  string
+	IsBuiltin bool
+	Args      []Expr
+	Range     types.FileRange
 }
 
 type ClosureApplicationExpr struct {

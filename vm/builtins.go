@@ -28,6 +28,19 @@ func checKTypes(values []Value, expected []string) error {
 
 var Builtins []Builtin = []Builtin{
 	{
+		Identifier: "+",
+		NumArgs:    2,
+		Function: func(v []Value) (Value, error) {
+			err := checKTypes(v, []string{NumType, NumType})
+			if err != nil {
+				return Value{}, err
+			}
+			res := Value{}
+			res.NewNum(v[0].Num + v[1].Num)
+			return res, nil
+		},
+	},
+	{
 		Identifier: "-",
 		NumArgs:    2,
 		Function: func(v []Value) (Value, error) {

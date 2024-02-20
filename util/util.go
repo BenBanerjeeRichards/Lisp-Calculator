@@ -50,7 +50,7 @@ func ParseTreeToString(node parser.Node) string {
 
 func doParseTreeToString(node parser.Node, builder *strings.Builder, i int) {
 	for _, child := range node.Children {
-		for n := 1; n < i; n++ {
+		for n := 1; n <= i; n++ {
 			builder.WriteString("\t")
 		}
 		builder.WriteString(child.Kind)

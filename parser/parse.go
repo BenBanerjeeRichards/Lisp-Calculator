@@ -147,7 +147,8 @@ func (p *Parser) parseQualifiedLiteral() (Node, error) {
 			if err == nil {
 				nodeRange := qualifierNode.Range
 				nodeRange.End = nameNode.Range.End
-				return Node{Range: nodeRange, Kind: QualifiedLiteralNode, Children: []Node{qualifierNode, nameNode}}, nil
+				qu := Node{Range: nodeRange, Kind: QualifiedLiteralNode, Children: []Node{qualifierNode, nameNode}}
+				return Node{Range: nodeRange, Kind: ExpressionNode, Children: []Node{qu}}, nil
 			}
 		}
 	}

@@ -51,6 +51,7 @@ func (c *Compiler) CompileProgram(startPath string, asts []ast.Ast) (CompileResu
 
 	c.processDeclarations(asts)
 
+	// Compile all function declarations first
 	for i := range asts {
 		if asts[i].Kind == ast.StmtType {
 			if funDefStmt, ok := asts[i].Statement.(ast.FuncDefStmt); ok {
@@ -81,7 +82,7 @@ func (c *Compiler) CompileProgram(startPath string, asts []ast.Ast) (CompileResu
 		if len(c.Functions[mainIdx].FunctionArguments) == 1 {
 			frame.Emit(PUSH_ARGS, -1)
 		} else if len(c.Functions[mainIdx].FunctionArguments) > 1 {
-			return CompileResult{}, types.Error{Simple: "Main function must take zero of one argument"}
+			return CompileResult{}, types.Error{Simple: "Main function must take zero or one argument"}
 		}
 		frame.EmitUnary(CALL_FUNCTION, mainIdx, -1)
 	} else {
@@ -349,26 +350,20 @@ func (c *Compiler) compileExpression(exprNode ast.Expr, frame *Frame) error {
 				return err
 			}
 		}
-		if expr.Identifier == "+" {
-			if len(expr.Args) != 2 {
-				return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Expected 2 arguments, got %d", len(expr.Args))}
+		if idx, builtinFunc, ok := lookupBuiltin(expr.Identifier); ok {
+			if len(expr.Args) != builtinFunc.NumArgs {
+				return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Expected %d arguments, got %d", builtinFunc.NumArgs, len(expr.Args))}
 			}
-			frame.Emit(ADD, expr.Range.Start.Line)
+			frame.EmitUnary(CALL_BUILTIN, idx, expr.Range.Start.Line)
+		} else if idx, ok := frame.VariableMap[expr.Identifier]; ok {
+			frame.EmitUnary(LOAD_VAR, idx, expr.Range.Start.Line)
+		} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
+			frame.EmitUnary(LOAD_GLOBAL, idx, expr.Range.Start.Line)
+		} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
+			frame.EmitUnary(CALL_FUNCTION, idx, expr.Range.Start.Line)
 		} else {
-			if idx, builtinFunc, ok := lookupBuiltin(expr.Identifier); ok {
-				if len(expr.Args) != builtinFunc.NumArgs {
-					return types.Error{Range: expr.GetRange(), Simple: fmt.Sprintf("Expected %d arguments, got %d", builtinFunc.NumArgs, len(expr.Args))}
-				}
-				frame.EmitUnary(CALL_BUILTIN, idx, expr.Range.Start.Line)
-			} else if idx, ok := frame.VariableMap[expr.Identifier]; ok {
-				frame.EmitUnary(LOAD_VAR, idx, expr.Range.Start.Line)
-			} else if idx, ok := c.GlobalVariableMap[expr.Identifier]; ok {
-				frame.EmitUnary(LOAD_GLOBAL, idx, expr.Range.Start.Line)
-			} else if idx, ok := c.FunctionMap[expr.Identifier]; ok {
-				frame.EmitUnary(CALL_FUNCTION, idx, expr.Range.Start.Line)
-			} else {
-				return types.Error{Range: expr.Range, Simple: fmt.Sprintf("Unknown identifier %s", expr.Identifier)}
-			}
+			spew.Dump(c.FunctionMap)
+			return types.Error{Range: expr.Range, Simple: fmt.Sprintf("Unknown identifier %s", expr.Identifier)}
 		}
 	default:
 		return errors.New(fmt.Sprintf("unsupported ast type %s", exprNode))

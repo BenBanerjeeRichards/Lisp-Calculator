@@ -166,25 +166,26 @@ func (constructor *AstConstructor) createAstExpression(node parser.Node) (Expr, 
 				Detail: "Expression must have non-zero children"}
 		}
 		litNode, litNodeOk := safeTraverse(node, []int{0, 0})
-		isFirstNodeLiteral := litNodeOk && len(node.Children[0].Children) == 1
+		isFirstNodeLiteral := (litNodeOk && len(node.Children[0].Children) == 1) && litNode.Kind == parser.LiteralNode
 		if isFirstNodeLiteral {
-			if litNode.Kind == parser.LiteralNode {
-				if litNode.Data == "if" {
-					return constructor.createIfExpr(node)
-				} else if litNode.Data == "list" {
-					return constructor.createList(node)
-				} else if litNode.Data == "lambda" {
-					return constructor.createClosure(node)
-				} else if litNode.Data == "struct" {
-					return constructor.createStruct(node)
-				} else if litNode.Data == "funcall" {
-					// Force application of closure value
-					return constructor.createAppExpr(node.Children[1:], node.Range)
-				} else {
-					return constructor.createFuncAppExpr(node)
-				}
+			if litNode.Data == "if" {
+				return constructor.createIfExpr(node)
+			} else if litNode.Data == "list" {
+				return constructor.createList(node)
+			} else if litNode.Data == "lambda" {
+				return constructor.createClosure(node)
+			} else if litNode.Data == "struct" {
+				return constructor.createStruct(node)
+			} else if litNode.Data == "funcall" {
+				// Force application of closure value
+				return constructor.createAppExpr(node.Children[1:], node.Range)
+			} else {
+				return constructor.createFuncAppExpr(node)
 			}
+		} else if litNode.Kind == parser.QualifiedLiteralNode {
+			return constructor.createFuncAppExpr(node)
 		}
+
 		if len(node.Children) == 1 {
 			return constructor.createAstExpression(node.Children[0])
 		}
@@ -374,20 +375,32 @@ func (constructor AstConstructor) createAppExpr(exprParts []parser.Node, appRang
 
 func (constructor *AstConstructor) createFuncAppExpr(node parser.Node) (Expr, error) {
 	funcNameExpr, err := singleNestedExpr(node.Children[0])
-	if err == nil && funcNameExpr.Kind == parser.LiteralNode {
-		appExpr := FunctionApplicationExpr{Identifier: funcNameExpr.Data, Args: make([]Expr, len(node.Children)-1), Range: node.Range}
-		for i, argNode := range node.Children[1:] {
-			argExpr, err := constructor.createAstExpression(argNode)
-			if err != nil {
-				return nil, types.Error{
-					Simple: "Function application expression must an expression",
-					Range:  argNode.Range}
-			}
-			appExpr.Args[i] = argExpr
-		}
-		return appExpr, nil
+	if err != nil {
+		return nil, types.Error{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
 	}
-	return nil, types.Error{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
+	var identifier string
+	qualifier := ""
+	if funcNameExpr.Kind == parser.QualifiedLiteralNode && len(funcNameExpr.Children) == 2 &&
+		funcNameExpr.Children[0].Kind == parser.LiteralNode && funcNameExpr.Children[1].Kind == parser.LiteralNode {
+		qualifier = funcNameExpr.Children[0].Data
+		identifier = funcNameExpr.Children[1].Data
+	} else if funcNameExpr.Kind == parser.LiteralNode {
+		identifier = funcNameExpr.Data
+	} else {
+		return nil, types.Error{Simple: "Parse error", Detail: "bad function application", Range: node.Range}
+	}
+
+	appExpr := FunctionApplicationExpr{Identifier: identifier, Qualifier: qualifier, Args: make([]Expr, len(node.Children)-1), Range: node.Range}
+	for i, argNode := range node.Children[1:] {
+		argExpr, err := constructor.createAstExpression(argNode)
+		if err != nil {
+			return nil, types.Error{
+				Simple: "Function application expression must an expression",
+				Range:  argNode.Range}
+		}
+		appExpr.Args[i] = argExpr
+	}
+	return appExpr, nil
 }
 
 func (constructor *AstConstructor) createClosure(node parser.Node) (ClosureDefExpr, error) {
